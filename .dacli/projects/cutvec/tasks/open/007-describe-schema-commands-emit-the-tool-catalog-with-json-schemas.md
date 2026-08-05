@@ -15,3 +15,4 @@ an agent can discover every command and its typed IO, and the same catalog backs
 - [ ] cutvec schema <cmd> returns the JSON Schema for that command
 - [ ] go test ./internal/catalog passes
 ## Log
+- 2026-08-05T21:37:09Z claimed by a-fixer-x4yg3c

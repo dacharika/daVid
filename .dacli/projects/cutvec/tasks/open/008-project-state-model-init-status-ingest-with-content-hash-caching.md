@@ -15,3 +15,4 @@ every step is resumable and an agent can read the whole project graph
 - [ ] cutvec status --json returns the state graph (sources, artifacts, what is done/pending)
 - [ ] re-running a completed step is a cache hit (idempotent), asserted by a test
 ## Log
+- 2026-08-05T21:37:09Z claimed by a-fixer-kthys7

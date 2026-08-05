@@ -15,3 +15,4 @@ Go orchestrates deterministic Python ML workers over a stable contract
 - [ ] protocol carries a version field and errors map to axerror {code,hint,retryable}
 - [ ] a fake echo worker round-trips in a go test
 ## Log
+- 2026-08-05T21:37:09Z claimed by a-fixer-4qganh
