@@ -1,0 +1,32 @@
+# Continuous integration for this repository, written by `dacli new`.
+# It runs the two commands recorded in the project's Constraints section —
+# `go build ./...` and `go test ./...` — so a red check here means what a red local run means.
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Go build and test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v4
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: 'stable'
+          cache: 'false'
+      - name: Download modules
+        run: go mod download
+      - name: Build
+        run: go build ./...
+      - name: Test
+        run: go test ./...

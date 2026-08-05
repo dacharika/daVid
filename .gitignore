@@ -1,0 +1,27 @@
+# Build output
+/build/
+/dist/
+# Built binary at repo root only — anchored so it never matches cmd/cutvec/ source.
+/cutvec
+*.exe
+*.test
+*.out
+
+# Go workspace / vendor
+/vendor/
+go.work
+go.work.sum
+
+# Local environment and secrets
+.env
+.env.*
+*.local
+
+# Editor / OS cruft
+.DS_Store
+.idea/
+.vscode/
+
+# Project working state (per-project-dir cache, proxies, renders)
+/tmp/
+*.log
