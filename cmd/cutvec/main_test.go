@@ -50,6 +50,99 @@ func TestRunDispatch(t *testing.T) {
 	}
 }
 
+// TestDescribeJSONReturnsToolArray is the AC1 proof: `describe --json` emits a
+// JSON array of tools, each carrying a name, summary, and both schemas — the
+// catalog an agent maps onto its tool list.
+func TestDescribeJSONReturnsToolArray(t *testing.T) {
+	var out bytes.Buffer
+	if err := run([]string{"describe", "--json"}, strings.NewReader(""), &out); err != nil {
+		t.Fatalf("describe --json = %v, want nil", err)
+	}
+	var tools []struct {
+		Name         string         `json:"name"`
+		Summary      string         `json:"summary"`
+		InputSchema  map[string]any `json:"inputSchema"`
+		OutputSchema map[string]any `json:"outputSchema"`
+	}
+	if err := json.Unmarshal(out.Bytes(), &tools); err != nil {
+		t.Fatalf("output is not a JSON array of tools: %v\n%s", err, out.String())
+	}
+	if len(tools) == 0 {
+		t.Fatal("describe --json returned no tools")
+	}
+	for _, tool := range tools {
+		if tool.Name == "" || tool.Summary == "" ||
+			len(tool.InputSchema) == 0 || len(tool.OutputSchema) == 0 {
+			t.Fatalf("tool missing name/summary/schema: %+v", tool)
+		}
+	}
+}
+
+// TestSchemaReturnsCommandSchema is the AC2 proof: `schema <cmd>` returns the
+// JSON Schema for that one command, declaring the draft dialect and nesting the
+// command's input and output schemas.
+func TestSchemaReturnsCommandSchema(t *testing.T) {
+	var out bytes.Buffer
+	if err := run([]string{"schema", "timeline"}, strings.NewReader(""), &out); err != nil {
+		t.Fatalf("schema timeline = %v, want nil", err)
+	}
+	var s map[string]any
+	if err := json.Unmarshal(out.Bytes(), &s); err != nil {
+		t.Fatalf("output is not a JSON object: %v\n%s", err, out.String())
+	}
+	if s["title"] != "timeline" {
+		t.Errorf("title = %v, want timeline", s["title"])
+	}
+	if s["$schema"] == nil {
+		t.Error("schema does not declare a $schema dialect")
+	}
+	props, ok := s["properties"].(map[string]any)
+	if !ok {
+		t.Fatalf("properties is %T, want object", s["properties"])
+	}
+	if props["input"] == nil || props["output"] == nil {
+		t.Errorf("schema missing input/output: %v", props)
+	}
+}
+
+// TestSchemaFailureRules pins schema's behaviour on empty and unknown input to
+// stable, branchable axerror codes.
+func TestSchemaFailureRules(t *testing.T) {
+	cases := []struct {
+		name string
+		args []string
+		code string
+	}{
+		{name: "no command", args: []string{"schema"}, code: "input.empty"},
+		{name: "unknown command", args: []string{"schema", "nope"}, code: "cli.unknown_command"},
+		{name: "too many args", args: []string{"schema", "a", "b"}, code: "input.invalid"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := run(tc.args, strings.NewReader(""), io.Discard)
+			var ae *axerror.Error
+			if !errors.As(err, &ae) {
+				t.Fatalf("err = %v, want *axerror.Error", err)
+			}
+			if ae.Code != tc.code {
+				t.Fatalf("code = %q, want %q", ae.Code, tc.code)
+			}
+		})
+	}
+}
+
+// TestDescribeUnknownFlag pins describe's rejection of an unknown flag.
+func TestDescribeUnknownFlag(t *testing.T) {
+	err := run([]string{"describe", "--bogus"}, strings.NewReader(""), io.Discard)
+	var ae *axerror.Error
+	if !errors.As(err, &ae) {
+		t.Fatalf("err = %v, want *axerror.Error", err)
+	}
+	if ae.Code != "cli.unknown_flag" {
+		t.Fatalf("code = %q, want cli.unknown_flag", ae.Code)
+	}
+}
+
 // TestTimelineSlice is the end-to-end proof of the first feature slice: a JSON
 // request enters at the CLI entry point, is carried through catalog/timeline/
 // project, and returns a handle to an MLT document that was really written to

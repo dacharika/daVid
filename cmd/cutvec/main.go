@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 
 	"github.com/tahabsn/cutvec/internal/axerror"
 	"github.com/tahabsn/cutvec/internal/catalog"
@@ -33,7 +34,9 @@ func run(args []string, stdin io.Reader, stdout io.Writer) error {
 	}
 	switch args[0] {
 	case "describe":
-		return emitJSON(stdout, catalog.Default())
+		return describeCmd(args[1:], stdout)
+	case "schema":
+		return schemaCmd(args[1:], stdout)
 	case "init":
 		return initCmd(args[1:], stdin, stdout)
 	case "ingest":
@@ -52,6 +55,49 @@ func run(args []string, stdin io.Reader, stdout io.Writer) error {
 			fmt.Sprintf("unknown command %q", args[0])).
 			WithHint("run `cutvec describe` to list available tools")
 	}
+}
+
+// describeCmd emits the tool catalog so an agent can discover every command and
+// its typed IO. `describe` returns the full catalog object ({version,tools});
+// `describe --json` returns just the tools array — each tool carrying its name,
+// summary, input schema, and output schema — which is the shape an agent maps
+// straight onto its tool list.
+func describeCmd(args []string, stdout io.Writer) error {
+	c := catalog.Default()
+	for _, a := range args {
+		switch a {
+		case "--json":
+			return emitJSON(stdout, c.Tools)
+		default:
+			return axerror.New("cli.unknown_flag", fmt.Sprintf("unknown flag %q", a)).
+				WithHint("the only flag is --json (emit the tools array)")
+		}
+	}
+	return emitJSON(stdout, c)
+}
+
+// schemaCmd emits the JSON Schema for a single command: `cutvec schema <cmd>`
+// returns a draft 2020-12 schema whose `input` and `output` describe that tool's
+// typed IO. An unknown command is a stable, branchable error listing the tools
+// the caller can ask about.
+func schemaCmd(args []string, stdout io.Writer) error {
+	if len(args) == 0 {
+		return axerror.New("input.empty", "no command named").
+			WithHint("run `cutvec schema <cmd>`, e.g. `cutvec schema timeline`")
+	}
+	if len(args) > 1 {
+		return axerror.New("input.invalid",
+			fmt.Sprintf("schema takes one command, got %d args", len(args))).
+			WithHint("name exactly one command, e.g. `cutvec schema timeline`")
+	}
+	c := catalog.Default()
+	tool, ok := c.Lookup(args[0])
+	if !ok {
+		return axerror.New("cli.unknown_command",
+			fmt.Sprintf("no command named %q", args[0])).
+			WithHint("known commands: " + strings.Join(c.Names(), ", "))
+	}
+	return emitJSON(stdout, tool.JSONSchema())
 }
 
 // timelineRequest is the JSON document a caller writes to stdin for the
@@ -360,7 +406,8 @@ func mapSourceErr(err error) error {
 func usage() error {
 	fmt.Fprintln(os.Stderr, "cutvec — agent-native video-editing CLI + MCP server")
 	fmt.Fprintln(os.Stderr, "\nusage: cutvec <command> [args]\n\ncommands:")
-	fmt.Fprintln(os.Stderr, "  describe   emit the tool catalog and JSON Schemas")
+	fmt.Fprintln(os.Stderr, "  describe   emit the tool catalog (--json for the tools array)")
+	fmt.Fprintln(os.Stderr, "  schema     emit the JSON Schema for one command: schema <cmd>")
 	fmt.Fprintln(os.Stderr, "  mcp        serve the catalog over MCP (not yet implemented)")
 	for _, t := range catalog.Default().Tools {
 		fmt.Fprintf(os.Stderr, "  %-10s %s\n", t.Name, t.Summary)

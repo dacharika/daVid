@@ -17,10 +17,61 @@ type Tool struct {
 // catalog can round-trip any schema shape without a fixed Go struct.
 type Schema map[string]any
 
+// jsonSchemaDialect is the JSON Schema draft every emitted schema declares, so
+// an agent knows exactly which dialect to validate against.
+const jsonSchemaDialect = "https://json-schema.org/draft/2020-12/schema"
+
 // Catalog is the ordered set of tools cutvec exposes.
 type Catalog struct {
 	Version string `json:"version"`
 	Tools   []Tool `json:"tools"`
+}
+
+// Lookup returns the tool with the given name and whether it was found. This is
+// how `cutvec schema <cmd>` resolves a command to its typed IO.
+func (c Catalog) Lookup(name string) (Tool, bool) {
+	for _, t := range c.Tools {
+		if t.Name == name {
+			return t, true
+		}
+	}
+	return Tool{}, false
+}
+
+// Names returns the tool names in catalog order, for error hints that list the
+// commands an agent can ask about.
+func (c Catalog) Names() []string {
+	names := make([]string, len(c.Tools))
+	for i, t := range c.Tools {
+		names[i] = t.Name
+	}
+	return names
+}
+
+// JSONSchema returns a self-contained JSON Schema document for the tool: a
+// draft 2020-12 schema titled by the tool whose `input` and `output` properties
+// hold the schemas the caller must satisfy and can expect back. This is the
+// document `cutvec schema <cmd>` emits.
+func (t Tool) JSONSchema() Schema {
+	input := t.InputSchema
+	if input == nil {
+		input = objectSchema()
+	}
+	output := t.OutputSchema
+	if output == nil {
+		output = objectSchema()
+	}
+	return Schema{
+		"$schema":     jsonSchemaDialect,
+		"title":       t.Name,
+		"description": t.Summary,
+		"type":        "object",
+		"properties": map[string]any{
+			"input":  map[string]any(input),
+			"output": map[string]any(output),
+		},
+		"required": []any{"input", "output"},
+	}
 }
 
 // objectSchema is the JSON Schema for an object with no required properties.
