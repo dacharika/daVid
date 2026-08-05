@@ -26,6 +26,37 @@ go build -o build/cutvec ./cmd/cutvec
 `describe` is the entry point every agent starts from: one self-describing
 catalog backs both the CLI and the MCP server, so the two surfaces never drift.
 
+## Project state: init, ingest, status
+
+A project is a directory holding a `project.json` manifest plus a content-hash
+`cache/`. Three tools model its state so every step is resumable and an agent can
+read the whole graph in one call:
+
+```sh
+echo '{"project":"proj","name":"podcast"}' | ./build/cutvec init
+# → {"project":"proj","manifest":"proj/project.json","name":"podcast","created":true}
+
+echo '{"project":"proj","source":"raw.mp4"}' | ./build/cutvec ingest
+# → {"source":{"id":"8b1faca47fef","path":"raw.mp4","hash":"8b1f…"},"cached":false}
+echo '{"project":"proj","source":"raw.mp4"}' | ./build/cutvec ingest   # re-run
+# → {"source":{…},"cached":true}   ← content-hash cache hit; nothing re-recorded
+
+echo '{"project":"proj"}' | ./build/cutvec status --json
+# → {"project":"proj","name":"podcast","sources":[…],"artifacts":[{"name":"timeline","status":"pending"}]}
+```
+
+`init` is idempotent (re-running returns `created:false`, never clobbering).
+`ingest` keys each source on the sha256 of its bytes: re-ingesting an unchanged
+file is a **cache hit** (`cached:true`) that records nothing — the step is
+deterministic, idempotent, and resumable. `status` returns the state graph — the
+sources ingested and each artifact marked `done`/`pending` — so an agent decides
+what to run next from one JSON read. Every mutating tool takes `--plan`.
+
+Failure rules: empty stdin returns `input.empty`; a missing `project`/`source`
+returns `input.invalid`; ingesting or statusing a directory with no manifest
+returns `project.uninitialized`; a missing source file returns `source.missing` —
+each the structured `{code, hint, retryable}` shape on stderr with a non-zero exit.
+
 ## First feature slice: build a timeline
 
 The `timeline` tool is the first edit operation carried end to end. It reads a

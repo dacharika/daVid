@@ -34,6 +34,12 @@ func run(args []string, stdin io.Reader, stdout io.Writer) error {
 	switch args[0] {
 	case "describe":
 		return emitJSON(stdout, catalog.Default())
+	case "init":
+		return initCmd(args[1:], stdin, stdout)
+	case "ingest":
+		return ingestCmd(args[1:], stdin, stdout)
+	case "status":
+		return statusCmd(args[1:], stdin, stdout)
 	case "timeline":
 		return timelineCmd(args[1:], stdin, stdout)
 	case "mcp":
@@ -136,6 +142,217 @@ func timelineCmd(args []string, stdin io.Reader, stdout io.Writer) error {
 		return axerror.New("project.write", "cannot write timeline: "+err.Error()).AsRetryable()
 	}
 	return emitJSON(stdout, result)
+}
+
+// initRequest is the JSON document for the `init` tool: the directory to make a
+// project and an optional display name (defaulting to the directory base name).
+type initRequest struct {
+	Project string `json:"project"`
+	Name    string `json:"name"`
+}
+
+// initResult is the handle returned by `init`: where the manifest lives and
+// whether this call created it (false when the directory was already a project).
+type initResult struct {
+	Project  string `json:"project"`
+	Manifest string `json:"manifest"`
+	Name     string `json:"name"`
+	Created  bool   `json:"created"`
+	Planned  bool   `json:"planned,omitempty"`
+}
+
+// initCmd creates a project directory with a project.json manifest — the durable
+// state root every later step reads and writes. It is idempotent: re-running on
+// an existing project returns the manifest with created=false. --plan reports
+// what it would do without writing.
+func initCmd(args []string, stdin io.Reader, stdout io.Writer) error {
+	plan, err := parsePlan(args)
+	if err != nil {
+		return err
+	}
+	var req initRequest
+	if err := decodeRequest(stdin, &req); err != nil {
+		return err
+	}
+	if req.Project == "" {
+		return axerror.New("input.invalid", "project directory is required").
+			WithHint(`set "project" to the directory to initialise`)
+	}
+	proj := project.Open(req.Project)
+	if plan {
+		return emitJSON(stdout, initResult{
+			Project:  proj.Dir,
+			Manifest: proj.ManifestPath(),
+			Name:     req.Name,
+			Created:  !proj.Initialized(),
+			Planned:  true,
+		})
+	}
+	m, created, err := proj.Init(req.Name)
+	if err != nil {
+		return axerror.New("project.write", "cannot initialise project: "+err.Error()).AsRetryable()
+	}
+	return emitJSON(stdout, initResult{
+		Project:  proj.Dir,
+		Manifest: proj.ManifestPath(),
+		Name:     m.Name,
+		Created:  created,
+	})
+}
+
+// ingestRequest is the JSON document for the `ingest` tool: the project to record
+// into and the source media file to ingest.
+type ingestRequest struct {
+	Project string `json:"project"`
+	Source  string `json:"source"`
+}
+
+// ingestResult is the handle returned by `ingest`: the recorded source and
+// whether it was a content-hash cache hit (Cached=true means the identical bytes
+// were already ingested, so the re-run was idempotent and changed nothing).
+type ingestResult struct {
+	Source  project.Source `json:"source"`
+	Cached  bool           `json:"cached"`
+	Planned bool           `json:"planned,omitempty"`
+}
+
+// ingestCmd records a source file in the project keyed by its content hash.
+// Re-ingesting an unchanged file is a cache hit — deterministic, idempotent,
+// resumable. --plan computes the hash and reports the cache status without
+// writing.
+func ingestCmd(args []string, stdin io.Reader, stdout io.Writer) error {
+	plan, err := parsePlan(args)
+	if err != nil {
+		return err
+	}
+	var req ingestRequest
+	if err := decodeRequest(stdin, &req); err != nil {
+		return err
+	}
+	if req.Project == "" {
+		return axerror.New("input.invalid", "project directory is required").
+			WithHint(`set "project" to the project directory`)
+	}
+	if req.Source == "" {
+		return axerror.New("input.invalid", "source path is required").
+			WithHint(`set "source" to a media file to ingest`)
+	}
+	proj := project.Open(req.Project)
+	if !proj.Initialized() {
+		return axerror.New("project.uninitialized", "project is not initialised").
+			WithHint("run `cutvec init` on this directory first")
+	}
+	if plan {
+		src, err := proj.DescribeSource(req.Source)
+		if err != nil {
+			return mapSourceErr(err)
+		}
+		return emitJSON(stdout, ingestResult{Source: src, Cached: proj.CacheHit(src.Hash), Planned: true})
+	}
+	res, err := proj.Ingest(req.Source)
+	if err != nil {
+		return mapSourceErr(err)
+	}
+	return emitJSON(stdout, ingestResult{Source: res.Source, Cached: res.Cached})
+}
+
+// statusRequest is the optional JSON document for the `status` tool: the project
+// to report on, defaulting to the current directory when stdin is empty.
+type statusRequest struct {
+	Project string `json:"project"`
+}
+
+// statusCmd returns the whole project state graph as JSON — sources ingested and
+// artifacts marked done/pending — so an agent can read the graph in one call.
+// The --json flag affirms the (only) output form. The project comes from stdin
+// or defaults to the current directory.
+func statusCmd(args []string, stdin io.Reader, stdout io.Writer) error {
+	for _, a := range args {
+		switch a {
+		case "--json":
+			// JSON is the only output form; the flag affirms it.
+		default:
+			return axerror.New("cli.unknown_flag", fmt.Sprintf("unknown flag %q", a)).
+				WithHint("the only flag is --json")
+		}
+	}
+	req := statusRequest{Project: "."}
+	if err := decodeOptionalRequest(stdin, &req); err != nil {
+		return err
+	}
+	if req.Project == "" {
+		req.Project = "."
+	}
+	proj := project.Open(req.Project)
+	graph, err := proj.Status()
+	if err != nil {
+		if errors.Is(err, project.ErrNotInitialized) {
+			return axerror.New("project.uninitialized", "project is not initialised").
+				WithHint("run `cutvec init` on this directory first")
+		}
+		return axerror.New("project.read", "cannot read project state: "+err.Error()).AsRetryable()
+	}
+	return emitJSON(stdout, graph)
+}
+
+// parsePlan reads the shared --plan dry-run flag off args, rejecting any other
+// flag with a stable code.
+func parsePlan(args []string) (bool, error) {
+	plan := false
+	for _, a := range args {
+		switch a {
+		case "--plan":
+			plan = true
+		default:
+			return false, axerror.New("cli.unknown_flag", fmt.Sprintf("unknown flag %q", a)).
+				WithHint("the only flag is --plan (dry-run)")
+		}
+	}
+	return plan, nil
+}
+
+// decodeRequest reads a single JSON object from stdin into v, mapping an empty
+// stream to input.empty and malformed JSON to input.invalid.
+func decodeRequest(stdin io.Reader, v any) error {
+	if err := json.NewDecoder(stdin).Decode(v); err != nil {
+		if errors.Is(err, io.EOF) {
+			return axerror.New("input.empty", "no JSON request on stdin").
+				WithHint("pipe a JSON request object to stdin")
+		}
+		return axerror.New("input.invalid", "request is not valid JSON: "+err.Error()).
+			WithHint("stdin must be a single JSON object")
+	}
+	return nil
+}
+
+// decodeOptionalRequest is decodeRequest for reads with no required input: an
+// empty stdin leaves v at its defaults rather than erroring.
+func decodeOptionalRequest(stdin io.Reader, v any) error {
+	if err := json.NewDecoder(stdin).Decode(v); err != nil {
+		if errors.Is(err, io.EOF) {
+			return nil
+		}
+		return axerror.New("input.invalid", "request is not valid JSON: "+err.Error()).
+			WithHint("stdin must be a single JSON object")
+	}
+	return nil
+}
+
+// mapSourceErr turns a filesystem error from reading a source into a stable
+// axerror: a missing file is a caller mistake (source.missing), any other read
+// error may be transient (source.read, retryable). ErrNotInitialized is mapped
+// for defence in depth, though ingestCmd checks initialisation up front.
+func mapSourceErr(err error) error {
+	switch {
+	case errors.Is(err, project.ErrNotInitialized):
+		return axerror.New("project.uninitialized", "project is not initialised").
+			WithHint("run `cutvec init` on this directory first")
+	case errors.Is(err, os.ErrNotExist):
+		return axerror.New("source.missing", "source file not found: "+err.Error()).
+			WithHint("check the source path exists and is readable")
+	default:
+		return axerror.New("source.read", "cannot read source file: "+err.Error()).AsRetryable()
+	}
 }
 
 // usage prints the catalog's tool names so a caller (human or agent) can
