@@ -17,3 +17,4 @@ Pick the single entry point named first in cutvec's Spec section and carry one r
 - [ ] One entry point named in the project Spec runs from input to returned result
 - [ ] `go test ./...` covers that path with at least one test that fails when the path breaks
 ## Log
+- 2026-08-05T14:38:53Z claimed by a-fixer-zqmn1k

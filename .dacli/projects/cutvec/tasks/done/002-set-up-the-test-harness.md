@@ -14,7 +14,11 @@ a green run means something before there is code to trust
 ## Context
 Wire `go test ./...` so it runs from the repository root with no arguments.
 ## Acceptance
-- [ ] `go test ./...` exits 0 and runs at least one real assertion
-- [ ] One deliberately failing test was observed to fail, then removed or fixed
+- [x] `go test ./...` exits 0 and runs at least one real assertion
+- [x] One deliberately failing test was observed to fail, then removed or fixed
 ## Log
 - 2026-08-05T14:33:20Z claimed by a-fixer-br37c8
+- 2026-08-05T14:38:12Z accepted by a-root
+- 2026-08-05T14:38:12Z verified by `go test ./...` (exit 0)
+- 2026-08-05T14:38:12Z completed by a-root
+- 2026-08-05T14:38:53Z status done proposed by a-fixer-br37c8, applied (event 01KZ95KC9N3T543FRS9B1QNR9Q)
