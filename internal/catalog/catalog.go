@@ -116,7 +116,7 @@ func Default() Catalog {
 			},
 			{
 				Name:    "ingest",
-				Summary: "Record a source media file in the project, keyed by its content hash (idempotent, cached).",
+				Summary: "Probe a source, build a fast proxy and extract its audio via the ffmpeg worker; keyed by content hash (idempotent, cached).",
 				InputSchema: Schema{
 					"type":     "object",
 					"required": []any{"project", "source"},
@@ -130,14 +130,17 @@ func Default() Catalog {
 					"properties": map[string]any{
 						"source": map[string]any{
 							"type":        "object",
-							"description": "the recorded source",
+							"description": "the recorded source with handles to its derived artifacts",
 							"properties": map[string]any{
-								"id":   map[string]any{"type": "string", "description": "short content-hash handle"},
-								"path": map[string]any{"type": "string", "description": "resource path ingested from"},
-								"hash": map[string]any{"type": "string", "description": "full sha256 of the file contents"},
+								"id":    map[string]any{"type": "string", "description": "short content-hash handle"},
+								"path":  map[string]any{"type": "string", "description": "resource path ingested from"},
+								"hash":  map[string]any{"type": "string", "description": "full sha256 of the file contents"},
+								"proxy": map[string]any{"type": "string", "description": "handle: path to the fast proxy media"},
+								"audio": map[string]any{"type": "string", "description": "handle: path to the extracted audio track"},
+								"probe": map[string]any{"type": "object", "description": "probe metadata reported by the worker (duration, dimensions, codecs, ...)"},
 							},
 						},
-						"cached":  map[string]any{"type": "boolean", "description": "true on a content-hash cache hit (identical bytes seen before)"},
+						"cached":  map[string]any{"type": "boolean", "description": "true on a content-hash cache hit (identical bytes seen before; ffmpeg not re-run)"},
 						"planned": map[string]any{"type": "boolean", "description": "true when --plan was set and nothing was written"},
 					},
 				},

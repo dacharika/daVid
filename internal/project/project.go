@@ -72,7 +72,10 @@ type Manifest struct {
 
 // Source is one ingested input media file, identified by the content hash of its
 // bytes. Two files with identical contents share one Source, which is what makes
-// ingest a content-addressed, idempotent step.
+// ingest a content-addressed, idempotent step. When an Artifactor runs during
+// ingest the Source also carries handles to the derived proxy and audio files
+// and the probe metadata — all keyed by the same content hash, so re-ingesting
+// unchanged bytes returns the same handles without rebuilding anything.
 type Source struct {
 	// ID is a short, stable handle for the source (the content-hash prefix).
 	ID string `json:"id"`
@@ -80,6 +83,35 @@ type Source struct {
 	Path string `json:"path"`
 	// Hash is the full hex sha256 of the file's contents — the cache key.
 	Hash string `json:"hash"`
+	// Proxy is a handle (path) to the fast proxy media downstream steps run on;
+	// empty when no Artifactor built one.
+	Proxy string `json:"proxy,omitempty"`
+	// Audio is a handle (path) to the extracted audio track; empty when no
+	// Artifactor built one.
+	Audio string `json:"audio,omitempty"`
+	// Probe is the media metadata the prober reported (duration, dimensions,
+	// codecs, ...); nil when no Artifactor probed the source.
+	Probe map[string]any `json:"probe,omitempty"`
+}
+
+// Artifacts are the derived outputs an Artifactor builds from a source during
+// ingest: a fast proxy, an extracted audio track, and the probe metadata.
+type Artifacts struct {
+	// Proxy is the path to the built proxy media.
+	Proxy string
+	// Audio is the path to the extracted audio track.
+	Audio string
+	// Probe is the media metadata reported for the source.
+	Probe map[string]any
+}
+
+// Artifactor builds the proxy, audio and probe artifacts for a freshly-ingested
+// source, writing any files under cacheDir. It is the seam the ffmpeg worker
+// plugs into: Ingest calls it exactly once per content hash (on a cache miss),
+// never on a cache hit. A nil Artifactor records the source only — the pure
+// content-hash ingest, with no derived artifacts.
+type Artifactor interface {
+	BuildArtifacts(src Source, cacheDir string) (Artifacts, error)
 }
 
 // Initialized reports whether the project manifest exists on disk.
@@ -185,10 +217,16 @@ type IngestResult struct {
 
 // Ingest records a source file in the project, keyed by the content hash of its
 // bytes. Re-ingesting an unchanged file is a cache hit: the hash matches an
-// existing cache entry, no manifest mutation happens, and Cached is true. This
-// is what makes the step deterministic, idempotent, and resumable — the same
-// input always lands the same source exactly once.
-func (p Project) Ingest(path string) (IngestResult, error) {
+// existing cache entry, no manifest mutation happens, the Artifactor is NOT
+// re-run, and Cached is true. This is what makes the step deterministic,
+// idempotent, and resumable — the same input always lands the same source
+// exactly once and its artifacts are built exactly once.
+//
+// On a cache miss a non-nil Artifactor builds the source's derived artifacts
+// (proxy, audio, probe) before the source is recorded, so the manifest and the
+// cache entry carry the artifact handles. A nil Artifactor records the source
+// only.
+func (p Project) Ingest(path string, a Artifactor) (IngestResult, error) {
 	if !p.Initialized() {
 		return IngestResult{}, ErrNotInitialized
 	}
@@ -198,7 +236,8 @@ func (p Project) Ingest(path string) (IngestResult, error) {
 	}
 	if p.CacheHit(src.Hash) {
 		// Cache hit: identical bytes were ingested before. Return the cached
-		// record untouched — the defining idempotent re-run.
+		// record untouched — the defining idempotent re-run, and the reason the
+		// (potentially expensive) Artifactor is skipped entirely.
 		cached, err := p.readCachedSource(src.Hash)
 		if err != nil {
 			return IngestResult{}, err
@@ -206,8 +245,19 @@ func (p Project) Ingest(path string) (IngestResult, error) {
 		return IngestResult{Source: cached, Cached: true}, nil
 	}
 
-	// Cache miss: record the source (deduped by hash) and store the cache entry
-	// so the next run of the same bytes is a hit.
+	// Cache miss: build the derived artifacts once, then record the enriched
+	// source. The cache dir is where the artifact files live, content-addressed
+	// alongside the source record.
+	if a != nil {
+		arts, err := a.BuildArtifacts(src, p.CacheDir())
+		if err != nil {
+			return IngestResult{}, err
+		}
+		src.Proxy, src.Audio, src.Probe = arts.Proxy, arts.Audio, arts.Probe
+	}
+
+	// Record the source (deduped by hash) and store the cache entry so the next
+	// run of the same bytes is a hit.
 	m, err := p.Load()
 	if err != nil {
 		return IngestResult{}, err

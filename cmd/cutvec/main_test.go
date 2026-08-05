@@ -303,6 +303,7 @@ func TestInitIdempotent(t *testing.T) {
 // TestStatusStateGraph is acceptance #2: `cutvec status --json` returns the state
 // graph — the sources ingested and the artifacts with their done/pending status.
 func TestStatusStateGraph(t *testing.T) {
+	useFakeFFmpegWorker(t)
 	dir := filepath.Join(t.TempDir(), "proj")
 	runJSON(t, []string{"init"}, map[string]any{"project": dir}, nil)
 
@@ -366,6 +367,7 @@ func findArtifact(as []struct {
 // cached=true, and the manifest holds exactly one source — the step changed
 // nothing on the second run.
 func TestIngestCacheHitIdempotent(t *testing.T) {
+	useFakeFFmpegWorker(t)
 	dir := filepath.Join(t.TempDir(), "proj")
 	runJSON(t, []string{"init"}, map[string]any{"project": dir}, nil)
 
@@ -374,11 +376,15 @@ func TestIngestCacheHitIdempotent(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	type ingestSource struct {
+		Hash  string         `json:"hash"`
+		Proxy string         `json:"proxy"`
+		Audio string         `json:"audio"`
+		Probe map[string]any `json:"probe"`
+	}
 	var first struct {
-		Cached bool `json:"cached"`
-		Source struct {
-			Hash string `json:"hash"`
-		} `json:"source"`
+		Cached bool         `json:"cached"`
+		Source ingestSource `json:"source"`
 	}
 	runJSON(t, []string{"ingest"}, map[string]any{"project": dir, "source": src}, &first)
 	if first.Cached {
@@ -386,10 +392,8 @@ func TestIngestCacheHitIdempotent(t *testing.T) {
 	}
 
 	var second struct {
-		Cached bool `json:"cached"`
-		Source struct {
-			Hash string `json:"hash"`
-		} `json:"source"`
+		Cached bool         `json:"cached"`
+		Source ingestSource `json:"source"`
 	}
 	runJSON(t, []string{"ingest"}, map[string]any{"project": dir, "source": src}, &second)
 	if !second.Cached {
@@ -397,6 +401,14 @@ func TestIngestCacheHitIdempotent(t *testing.T) {
 	}
 	if first.Source.Hash != second.Source.Hash {
 		t.Fatalf("hash changed across runs: %q then %q", first.Source.Hash, second.Source.Hash)
+	}
+	// The cache hit must return the SAME artifact handles the miss built, without
+	// re-running the worker — the no-op re-ingest returns the recorded proxy/audio.
+	if second.Source.Proxy != first.Source.Proxy || second.Source.Audio != first.Source.Audio {
+		t.Fatalf("cached handles drifted: %+v then %+v", first.Source, second.Source)
+	}
+	if first.Source.Proxy == "" || first.Source.Audio == "" {
+		t.Fatalf("first ingest returned no proxy/audio handles: %+v", first.Source)
 	}
 
 	// Idempotency: the completed step added exactly one source, not two.
@@ -481,6 +493,117 @@ func TestStateModelFailureRules(t *testing.T) {
 				t.Fatalf("code = %q, want %q", ae.Code, tc.code)
 			}
 		})
+	}
+}
+
+// useFakeFFmpegWorker points ingest's ffmpeg worker at this test binary re-exec'd
+// as TestFFmpegHelperProcess, so ingest drives a real subprocess over real
+// stdin/stdout with no ffmpeg or python on PATH — the task 009 fake-worker
+// pattern, exercised through the CLI. It sets the env for the current test only.
+func useFakeFFmpegWorker(t *testing.T) {
+	t.Helper()
+	t.Setenv("GO_WANT_FFMPEG_HELPER", "1")
+	t.Setenv("CUTVEC_FFMPEG_WORKER", os.Args[0])
+	t.Setenv("CUTVEC_FFMPEG_WORKER_ARGS", "-test.run=TestFFmpegHelperProcess")
+}
+
+// TestFFmpegHelperProcess is not a real test: when GO_WANT_FFMPEG_HELPER is set
+// the test binary re-execs it as a stand-in ffmpeg worker. It reads the JSON
+// worker Request from stdin, writes the requested proxy and audio files (a real
+// worker would write actual media), and prints a JSON Response carrying probe
+// metadata plus the two handles — the versioned stdin/stdout contract task 009
+// defined, with zero external toolchain.
+func TestFFmpegHelperProcess(t *testing.T) {
+	if os.Getenv("GO_WANT_FFMPEG_HELPER") != "1" {
+		return
+	}
+	in, _ := io.ReadAll(os.Stdin)
+	var req struct {
+		Version int            `json:"version"`
+		Op      string         `json:"op"`
+		Params  map[string]any `json:"params"`
+	}
+	_ = json.Unmarshal(in, &req)
+	proxy, _ := req.Params["proxy"].(string)
+	audio, _ := req.Params["audio"].(string)
+	_ = os.WriteFile(proxy, []byte("proxy media"), 0o644)
+	_ = os.WriteFile(audio, []byte("audio track"), 0o644)
+	resp := map[string]any{
+		"version": req.Version,
+		"result": map[string]any{
+			"probe": map[string]any{"duration": 12.5, "width": 1920, "height": 1080},
+			"proxy": proxy,
+			"audio": audio,
+		},
+	}
+	out, _ := json.Marshal(resp)
+	os.Stdout.Write(out)
+	os.Exit(0)
+}
+
+// TestIngestBuildsProxyAudioProbe is acceptance #1: `cutvec ingest <video>`
+// returns handles for a proxy and audio plus probe metadata. The handles must
+// resolve to real files the worker wrote — proving the request reached the
+// ffmpeg worker over stdin/stdout and back.
+func TestIngestBuildsProxyAudioProbe(t *testing.T) {
+	useFakeFFmpegWorker(t)
+	dir := filepath.Join(t.TempDir(), "proj")
+	runJSON(t, []string{"init"}, map[string]any{"project": dir}, nil)
+
+	src := filepath.Join(t.TempDir(), "raw.mp4")
+	if err := os.WriteFile(src, []byte("raw video bytes"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	var res struct {
+		Cached bool `json:"cached"`
+		Source struct {
+			Proxy string         `json:"proxy"`
+			Audio string         `json:"audio"`
+			Probe map[string]any `json:"probe"`
+		} `json:"source"`
+	}
+	runJSON(t, []string{"ingest", "--json"}, map[string]any{"project": dir, "source": src}, &res)
+
+	if res.Cached {
+		t.Fatalf("first ingest cached = true, want false")
+	}
+	if res.Source.Proxy == "" || res.Source.Audio == "" {
+		t.Fatalf("ingest returned no proxy/audio handles: %+v", res.Source)
+	}
+	for _, h := range []string{res.Source.Proxy, res.Source.Audio} {
+		if _, err := os.Stat(h); err != nil {
+			t.Fatalf("handle %q does not resolve to a file the worker wrote: %v", h, err)
+		}
+	}
+	if res.Source.Probe == nil || res.Source.Probe["duration"] == nil {
+		t.Fatalf("ingest returned no probe metadata: %+v", res.Source.Probe)
+	}
+}
+
+// TestIngestWithoutWorkerIsMissing pins the failure rule: ingesting a real file
+// with no ffmpeg worker configured returns a non-retryable worker.missing — the
+// honest failure when the probe/proxy/audio step cannot run.
+func TestIngestWithoutWorkerIsMissing(t *testing.T) {
+	t.Setenv("CUTVEC_FFMPEG_WORKER", "")
+	t.Setenv("CUTVEC_FFMPEG_WORKER_ARGS", "")
+	dir := filepath.Join(t.TempDir(), "proj")
+	runJSON(t, []string{"init"}, map[string]any{"project": dir}, nil)
+
+	src := filepath.Join(t.TempDir(), "raw.mp4")
+	if err := os.WriteFile(src, []byte("raw video bytes"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	err := run([]string{"ingest"}, strings.NewReader(`{"project":"`+dir+`","source":"`+src+`"}`), io.Discard)
+	var ae *axerror.Error
+	if !errors.As(err, &ae) {
+		t.Fatalf("err = %v, want *axerror.Error", err)
+	}
+	if ae.Code != "worker.missing" {
+		t.Fatalf("code = %q, want worker.missing", ae.Code)
+	}
+	if ae.Retryable {
+		t.Fatal("a missing worker is not retryable")
 	}
 }
 

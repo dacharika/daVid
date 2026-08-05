@@ -5,17 +5,20 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/tahabsn/cutvec/internal/axerror"
 	"github.com/tahabsn/cutvec/internal/catalog"
 	"github.com/tahabsn/cutvec/internal/project"
 	"github.com/tahabsn/cutvec/internal/timeline"
+	"github.com/tahabsn/cutvec/internal/worker"
 )
 
 func main() {
@@ -253,23 +256,35 @@ type ingestRequest struct {
 	Source  string `json:"source"`
 }
 
-// ingestResult is the handle returned by `ingest`: the recorded source and
-// whether it was a content-hash cache hit (Cached=true means the identical bytes
-// were already ingested, so the re-run was idempotent and changed nothing).
+// ingestResult is the handle returned by `ingest`: the recorded source — which
+// carries handles to its proxy and audio plus the probe metadata — and whether
+// it was a content-hash cache hit (Cached=true means the identical bytes were
+// already ingested, so the re-run was idempotent, the ffmpeg worker was not
+// re-run, and nothing changed).
 type ingestResult struct {
 	Source  project.Source `json:"source"`
 	Cached  bool           `json:"cached"`
 	Planned bool           `json:"planned,omitempty"`
 }
 
-// ingestCmd records a source file in the project keyed by its content hash.
-// Re-ingesting an unchanged file is a cache hit — deterministic, idempotent,
-// resumable. --plan computes the hash and reports the cache status without
-// writing.
+// ingestCmd records a source file in the project keyed by its content hash and,
+// on a cache miss, drives the ffmpeg worker to probe it, build a fast proxy, and
+// extract its audio — returning handles to all three plus the probe metadata.
+// Re-ingesting an unchanged file is a cache hit that returns the recorded handles
+// without touching the worker: deterministic, idempotent, resumable. --plan
+// computes the hash and reports the cache status without writing or probing.
 func ingestCmd(args []string, stdin io.Reader, stdout io.Writer) error {
-	plan, err := parsePlan(args)
-	if err != nil {
-		return err
+	plan := false
+	for _, a := range args {
+		switch a {
+		case "--plan":
+			plan = true
+		case "--json":
+			// JSON is the only output form; the flag affirms it.
+		default:
+			return axerror.New("cli.unknown_flag", fmt.Sprintf("unknown flag %q", a)).
+				WithHint("flags are --plan (dry-run) and --json (affirm JSON output)")
+		}
 	}
 	var req ingestRequest
 	if err := decodeRequest(stdin, &req); err != nil {
@@ -295,11 +310,85 @@ func ingestCmd(args []string, stdin io.Reader, stdout io.Writer) error {
 		}
 		return emitJSON(stdout, ingestResult{Source: src, Cached: proj.CacheHit(src.Hash), Planned: true})
 	}
-	res, err := proj.Ingest(req.Source)
+	res, err := proj.Ingest(req.Source, ffmpegArtifactor{ctx: context.Background()})
 	if err != nil {
 		return mapSourceErr(err)
 	}
 	return emitJSON(stdout, ingestResult{Source: res.Source, Cached: res.Cached})
+}
+
+// ffmpegOp is the single worker operation ingest drives: given a source and two
+// output paths, the worker probes the media, writes a fast proxy, and extracts
+// the audio track, reporting the probe metadata back in one round-trip.
+const ffmpegOp = "ingest"
+
+// ffmpegArtifactor is the project.Artifactor backed by the ffmpeg worker (task
+// 009's JSON-over-stdin/stdout boundary). It writes no media itself: it hands the
+// worker output paths under the project cache and trusts the worker to write
+// them, then verifies both files landed before returning their handles. The
+// worker is resolved lazily, only when a source is actually built (a cache miss
+// on a real file), so a missing worker never masks an input error like a
+// non-existent source.
+type ffmpegArtifactor struct {
+	ctx context.Context
+}
+
+// BuildArtifacts drives the ffmpeg worker for one source and returns handles to
+// the proxy and audio it wrote plus the probe metadata it reported. Every
+// failure is the structured axerror the worker boundary already produces.
+func (fa ffmpegArtifactor) BuildArtifacts(src project.Source, cacheDir string) (project.Artifacts, error) {
+	w, err := resolveFFmpegWorker()
+	if err != nil {
+		return project.Artifacts{}, err
+	}
+	if err := os.MkdirAll(cacheDir, 0o755); err != nil {
+		return project.Artifacts{}, axerror.New("project.write",
+			"cannot create cache directory: "+err.Error()).AsRetryable()
+	}
+	proxyOut := filepath.Join(cacheDir, src.Hash+".proxy.mp4")
+	audioOut := filepath.Join(cacheDir, src.Hash+".audio.wav")
+
+	resp, err := w.Invoke(fa.ctx, worker.Request{
+		Op: ffmpegOp,
+		Params: map[string]any{
+			"source": src.Path,
+			"proxy":  proxyOut,
+			"audio":  audioOut,
+		},
+	})
+	if err != nil {
+		return project.Artifacts{}, err // already an *axerror.Error from the worker boundary
+	}
+
+	// The worker must have written both handles; a handle that does not resolve
+	// to a real file is a protocol violation, not a usable artifact.
+	for _, out := range []string{proxyOut, audioOut} {
+		if _, statErr := os.Stat(out); statErr != nil {
+			return project.Artifacts{}, axerror.New("worker.protocol",
+				"ffmpeg worker did not write "+out+": "+statErr.Error()).
+				WithHint("the ingest worker must write the proxy and audio files it is given")
+		}
+	}
+	probe, _ := resp.Result["probe"].(map[string]any)
+	return project.Artifacts{Proxy: proxyOut, Audio: audioOut, Probe: probe}, nil
+}
+
+// resolveFFmpegWorker builds the ffmpeg worker handle from the environment:
+// CUTVEC_FFMPEG_WORKER is the executable to run and CUTVEC_FFMPEG_WORKER_ARGS its
+// fixed leading arguments (space-separated, typically the worker script path).
+// With no worker configured there is nothing to probe/proxy/extract with, so
+// ingest returns a non-retryable worker.missing pointing the caller at the fix.
+func resolveFFmpegWorker() (worker.Worker, error) {
+	path := os.Getenv("CUTVEC_FFMPEG_WORKER")
+	if path == "" {
+		return worker.Worker{}, axerror.New("worker.missing", "no ffmpeg worker is configured").
+			WithHint("set CUTVEC_FFMPEG_WORKER to the ffmpeg worker executable (install the Python workers)")
+	}
+	w := worker.Worker{Path: path}
+	if a := strings.Fields(os.Getenv("CUTVEC_FFMPEG_WORKER_ARGS")); len(a) > 0 {
+		w.Args = a
+	}
+	return w, nil
 }
 
 // statusRequest is the optional JSON document for the `status` tool: the project
@@ -387,8 +476,14 @@ func decodeOptionalRequest(stdin io.Reader, v any) error {
 // mapSourceErr turns a filesystem error from reading a source into a stable
 // axerror: a missing file is a caller mistake (source.missing), any other read
 // error may be transient (source.read, retryable). ErrNotInitialized is mapped
-// for defence in depth, though ingestCmd checks initialisation up front.
+// for defence in depth, though ingestCmd checks initialisation up front. An error
+// that is already a structured axerror — the ffmpeg worker's failures reach here
+// through Ingest's Artifactor — passes through unchanged so its code survives.
 func mapSourceErr(err error) error {
+	var ae *axerror.Error
+	if errors.As(err, &ae) {
+		return err
+	}
 	switch {
 	case errors.Is(err, project.ErrNotInitialized):
 		return axerror.New("project.uninitialized", "project is not initialised").
