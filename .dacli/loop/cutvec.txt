@@ -1,8 +1,8 @@
 project: cutvec
-cycle: 12
-trunk_marker: 5
-window_tokens: 55949
+cycle: 13
+trunk_marker: 6
+window_tokens: 112724
 backlog: 16
 status: proceed
 reason: 
-updated_at: 2026-08-05T21:37:09Z
+updated_at: 2026-08-05T23:09:08Z
