@@ -17,3 +17,4 @@ Wire `go test ./...` so it runs from the repository root with no arguments.
 - [ ] `go test ./...` exits 0 and runs at least one real assertion
 - [ ] One deliberately failing test was observed to fail, then removed or fixed
 ## Log
+- 2026-08-05T14:33:20Z claimed by a-fixer-br37c8
