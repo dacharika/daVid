@@ -5,17 +5,20 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"os"
+	"strconv"
 	"strings"
 
 	"github.com/tahabsn/cutvec/internal/axerror"
 	"github.com/tahabsn/cutvec/internal/catalog"
 	"github.com/tahabsn/cutvec/internal/project"
 	"github.com/tahabsn/cutvec/internal/timeline"
+	"github.com/tahabsn/cutvec/internal/worker"
 )
 
 func main() {
@@ -43,6 +46,8 @@ func run(args []string, stdin io.Reader, stdout io.Writer) error {
 		return ingestCmd(args[1:], stdin, stdout)
 	case "status":
 		return statusCmd(args[1:], stdin, stdout)
+	case "transcribe":
+		return transcribeCmd(args[1:], stdin, stdout)
 	case "timeline":
 		return timelineCmd(args[1:], stdin, stdout)
 	case "mcp":
@@ -339,6 +344,206 @@ func statusCmd(args []string, stdin io.Reader, stdout io.Writer) error {
 		return axerror.New("project.read", "cannot read project state: "+err.Error()).AsRetryable()
 	}
 	return emitJSON(stdout, graph)
+}
+
+// transcribeRequest is the JSON document for the `transcribe` tool. Project is
+// required (and may instead be given as a positional argument). Source names the
+// ingested source to transcribe — its path, id, or hash — and may be omitted when
+// the project holds exactly one source. Worker/WorkerArgs locate the whisper
+// worker executable; when Worker is empty the CUTVEC_WHISPER_WORKER env var is
+// used.
+type transcribeRequest struct {
+	Project    string   `json:"project"`
+	Source     string   `json:"source"`
+	Worker     string   `json:"worker"`
+	WorkerArgs []string `json:"workerArgs"`
+}
+
+// transcribeResult is the handle returned by `transcribe`: the path to the cached
+// word-level transcript plus a small summary. Cached=true means the transcript
+// already existed for these bytes, so no worker ran — the idempotent re-run.
+type transcribeResult struct {
+	Transcript string `json:"transcript"`
+	Source     string `json:"source"`
+	Words      int    `json:"words"`
+	Language   string `json:"language,omitempty"`
+	Cached     bool   `json:"cached"`
+	Planned    bool   `json:"planned,omitempty"`
+}
+
+// transcribeCmd produces a word-level transcript of an ingested source and caches
+// it keyed by the source's content hash, so a re-run is a pure cache hit that
+// invokes no worker. The transcript itself (words with start/end times) lives at
+// the returned handle; the JSON result carries the handle, not the transcript
+// blob. The project may be given as a positional argument (`cutvec transcribe
+// <project>`) or in the JSON request. --plan reports the handle and cache status
+// without running the worker.
+func transcribeCmd(args []string, stdin io.Reader, stdout io.Writer) error {
+	posProject, plan, err := parseTranscribeArgs(args)
+	if err != nil {
+		return err
+	}
+	var req transcribeRequest
+	if err := decodeOptionalRequest(stdin, &req); err != nil {
+		return err
+	}
+	if posProject != "" {
+		req.Project = posProject
+	}
+	if req.Project == "" {
+		return axerror.New("input.invalid", "project directory is required").
+			WithHint(`pass it as an argument (cutvec transcribe <project>) or set "project" in the JSON request`)
+	}
+
+	proj := project.Open(req.Project)
+	if !proj.Initialized() {
+		return axerror.New("project.uninitialized", "project is not initialised").
+			WithHint("run `cutvec init` on this directory first")
+	}
+	m, err := proj.Load()
+	if err != nil {
+		return axerror.New("project.read", "cannot read project state: "+err.Error()).AsRetryable()
+	}
+	src, err := resolveSource(m, req.Source)
+	if err != nil {
+		return err
+	}
+
+	// Cache hit: the transcript for these bytes already exists. Return it
+	// untouched, running no worker — the defining idempotent re-run.
+	if proj.HasTranscript(src.Hash) {
+		t, err := proj.ReadTranscript(src.Hash)
+		if err != nil {
+			return axerror.New("project.read", "cannot read cached transcript: "+err.Error()).AsRetryable()
+		}
+		return emitJSON(stdout, transcribeResult{
+			Transcript: proj.TranscriptPath(src.Hash),
+			Source:     src.Hash,
+			Words:      len(t.Words),
+			Language:   t.Language,
+			Cached:     true,
+		})
+	}
+
+	if plan {
+		return emitJSON(stdout, transcribeResult{
+			Transcript: proj.TranscriptPath(src.Hash),
+			Source:     src.Hash,
+			Cached:     false,
+			Planned:    true,
+		})
+	}
+
+	w, err := resolveWorker(req)
+	if err != nil {
+		return err
+	}
+	resp, err := w.Invoke(context.Background(), worker.Request{
+		Op:     "transcribe",
+		Params: map[string]any{"source": src.Path},
+	})
+	if err != nil {
+		return err // already an *axerror.Error from the worker boundary
+	}
+	t, err := transcriptFromResult(resp.Result)
+	if err != nil {
+		return err
+	}
+	t.Source = src.Hash
+	if err := proj.WriteTranscript(src.Hash, t); err != nil {
+		return axerror.New("project.write", "cannot cache transcript: "+err.Error()).AsRetryable()
+	}
+	return emitJSON(stdout, transcribeResult{
+		Transcript: proj.TranscriptPath(src.Hash),
+		Source:     src.Hash,
+		Words:      len(t.Words),
+		Language:   t.Language,
+		Cached:     false,
+	})
+}
+
+// parseTranscribeArgs reads transcribe's flags (--plan dry-run, --json affirming
+// the output form) and at most one positional project argument off args.
+func parseTranscribeArgs(args []string) (proj string, plan bool, err error) {
+	for _, a := range args {
+		switch {
+		case a == "--plan":
+			plan = true
+		case a == "--json":
+			// JSON is the only output form; the flag affirms it.
+		case strings.HasPrefix(a, "-"):
+			return "", false, axerror.New("cli.unknown_flag", fmt.Sprintf("unknown flag %q", a)).
+				WithHint("the flags are --plan (dry-run) and --json")
+		default:
+			if proj != "" {
+				return "", false, axerror.New("input.invalid",
+					"transcribe takes at most one project argument").
+					WithHint("name one project, e.g. `cutvec transcribe ./proj`")
+			}
+			proj = a
+		}
+	}
+	return proj, plan, nil
+}
+
+// resolveSource picks the ingested source to transcribe. With no name it returns
+// the project's sole source, erroring when the project has none (nothing to
+// transcribe) or more than one (ambiguous). A name matches a source by its path,
+// id, or hash.
+func resolveSource(m project.Manifest, want string) (project.Source, error) {
+	if len(m.Sources) == 0 {
+		return project.Source{}, axerror.New("input.empty",
+			"project has no ingested sources to transcribe").
+			WithHint("run `cutvec ingest` to add a source first")
+	}
+	if want == "" {
+		if len(m.Sources) == 1 {
+			return m.Sources[0], nil
+		}
+		return project.Source{}, axerror.New("input.invalid",
+			fmt.Sprintf("project has %d sources; name one with \"source\"", len(m.Sources))).
+			WithHint("set \"source\" to the path, id, or hash of the source to transcribe")
+	}
+	for _, s := range m.Sources {
+		if s.Path == want || s.ID == want || s.Hash == want {
+			return s, nil
+		}
+	}
+	return project.Source{}, axerror.New("source.missing",
+		"no ingested source matches "+strconv.Quote(want)).
+		WithHint("ingest the source first, or use a path/id from `cutvec status`")
+}
+
+// resolveWorker builds the whisper Worker from the request, falling back to the
+// CUTVEC_WHISPER_WORKER env var for the executable path. With neither set there
+// is no worker to run, which is a non-retryable worker.missing.
+func resolveWorker(req transcribeRequest) (worker.Worker, error) {
+	path := req.Worker
+	if path == "" {
+		path = os.Getenv("CUTVEC_WHISPER_WORKER")
+	}
+	if path == "" {
+		return worker.Worker{}, axerror.New("worker.missing", "no whisper worker configured").
+			WithHint(`set "worker" in the request or the CUTVEC_WHISPER_WORKER env var to the whisper worker executable`)
+	}
+	return worker.Worker{Path: path, Args: req.WorkerArgs}, nil
+}
+
+// transcriptFromResult lifts the worker's result map into a Transcript. A result
+// that is not shaped like a transcript is a protocol violation.
+func transcriptFromResult(result map[string]any) (project.Transcript, error) {
+	b, err := json.Marshal(result)
+	if err != nil {
+		return project.Transcript{}, axerror.New("worker.protocol",
+			"cannot re-encode worker result: "+err.Error())
+	}
+	var t project.Transcript
+	if err := json.Unmarshal(b, &t); err != nil {
+		return project.Transcript{}, axerror.New("worker.protocol",
+			"worker result is not a transcript: "+err.Error()).
+			WithHint(`the transcribe worker must return {"words":[{"word","start","end"}],...}`)
+	}
+	return t, nil
 }
 
 // parsePlan reads the shared --plan dry-run flag off args, rejecting any other

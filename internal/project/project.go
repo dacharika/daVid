@@ -250,6 +250,72 @@ func (p Project) readCachedSource(hash string) (Source, error) {
 	return s, nil
 }
 
+// Word is one transcribed token with its start and end offset, in seconds from
+// the start of the media. Word-level timing is what lets an agent search the
+// transcript and build karaoke captions.
+type Word struct {
+	Word  string  `json:"word"`
+	Start float64 `json:"start"`
+	End   float64 `json:"end"`
+}
+
+// Transcript is the word-level transcript of one source, as returned by the
+// whisper worker and cached in the project. It is content-addressed by Source
+// (the sha256 of the transcribed media), so re-transcribing identical bytes is a
+// cache hit.
+type Transcript struct {
+	// Source is the content hash of the media this transcript was produced from.
+	Source string `json:"source"`
+	// Language is the detected language code, when the worker reports one.
+	Language string `json:"language,omitempty"`
+	// Text is the full transcript text, when the worker reports one.
+	Text string `json:"text,omitempty"`
+	// Words are the timecoded tokens, each with a start/end in seconds.
+	Words []Word `json:"words"`
+}
+
+// transcriptKey namespaces a transcript cache entry so it never collides with
+// the source record ingest writes under the bare content hash.
+func transcriptKey(hash string) string { return "transcribe-" + hash }
+
+// TranscriptPath is the handle a transcribe step returns: the path to the cached
+// word-level transcript for the source with the given content hash.
+func (p Project) TranscriptPath(hash string) string {
+	return p.cachePath(transcriptKey(hash))
+}
+
+// HasTranscript reports whether a transcript for the source has already been
+// produced — i.e. whether transcribe is a cache hit for these bytes.
+func (p Project) HasTranscript(hash string) bool {
+	return p.CacheHit(transcriptKey(hash))
+}
+
+// WriteTranscript stores the transcript as the cache entry for its source hash,
+// creating the cache directory if needed.
+func (p Project) WriteTranscript(hash string, t Transcript) error {
+	if err := os.MkdirAll(p.CacheDir(), 0o755); err != nil {
+		return err
+	}
+	b, err := json.MarshalIndent(t, "", "  ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(p.TranscriptPath(hash), append(b, '\n'), 0o644)
+}
+
+// ReadTranscript reads the cached transcript for the source hash.
+func (p Project) ReadTranscript(hash string) (Transcript, error) {
+	b, err := os.ReadFile(p.TranscriptPath(hash))
+	if err != nil {
+		return Transcript{}, err
+	}
+	var t Transcript
+	if err := json.Unmarshal(b, &t); err != nil {
+		return Transcript{}, err
+	}
+	return t, nil
+}
+
 // hasSource reports whether a source with the given content hash is already in ss.
 func hasSource(ss []Source, hash string) bool {
 	for _, s := range ss {
@@ -295,11 +361,16 @@ func (p Project) Status() (StateGraph, error) {
 	if err != nil {
 		return StateGraph{}, err
 	}
+	artifacts := []Artifact{p.artifact("timeline", p.TimelinePath())}
+	// A transcript is a per-source artifact, done once its cache entry exists.
+	for _, s := range m.Sources {
+		artifacts = append(artifacts, p.artifact("transcript:"+s.ID, p.TranscriptPath(s.Hash)))
+	}
 	return StateGraph{
 		Project:   p.Dir,
 		Name:      m.Name,
 		Sources:   m.Sources,
-		Artifacts: []Artifact{p.artifact("timeline", p.TimelinePath())},
+		Artifacts: artifacts,
 	}, nil
 }
 

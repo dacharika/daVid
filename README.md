@@ -57,6 +57,31 @@ returns `input.invalid`; ingesting or statusing a directory with no manifest
 returns `project.uninitialized`; a missing source file returns `source.missing` —
 each the structured `{code, hint, retryable}` shape on stderr with a non-zero exit.
 
+## Transcribe: word-level transcript, cached
+
+`transcribe` turns an ingested source into a **word-level transcript** — each
+token with a `start`/`end` in seconds — so an agent can search the audio and
+build karaoke captions. It runs the whisper worker (a subprocess speaking the
+versioned JSON contract; point at it with `"worker"` or the
+`CUTVEC_WHISPER_WORKER` env var) and caches the result keyed by the source's
+content hash, so a re-run is a **cache hit** that invokes no worker:
+
+```sh
+./build/cutvec transcribe proj --json < /dev/null
+# → {"transcript":"proj/cache/transcribe-<hash>.json","source":"<hash>","words":812,"language":"en","cached":false}
+./build/cutvec transcribe proj --json < /dev/null   # re-run
+# → {"transcript":"proj/cache/transcribe-<hash>.json",…,"cached":true}   (no worker ran)
+```
+
+The project may be a positional argument (`transcribe proj`) or `"project"` in a
+JSON request; `"source"` (a path, id, or hash) selects which ingested source when
+the project has more than one. The result is a **handle** to the transcript file,
+not the transcript blob. `--plan` reports the handle and cache status without
+running the worker. Failure rules: a project with no ingested sources returns
+`input.empty`; an unknown source returns `source.missing`; no configured worker
+returns `worker.missing`; a worker that never started, crashes, or speaks the
+wrong contract version maps to `worker.missing`/`worker.crashed`/`worker.version`.
+
 ## First feature slice: build a timeline
 
 The `timeline` tool is the first edit operation carried end to end. It reads a

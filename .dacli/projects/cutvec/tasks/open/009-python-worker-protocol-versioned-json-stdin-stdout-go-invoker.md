@@ -15,3 +15,5 @@ Go orchestrates deterministic Python ML workers over a stable contract
 - [ ] protocol carries a version field and errors map to axerror {code,hint,retryable}
 - [ ] a fake echo worker round-trips in a go test
 ## Log
+- 2026-08-05T21:37:09Z claimed by a-fixer-4qganh
+- 2026-08-05T23:12:47Z a-fixer-978dgv: PR opened: https://github.com/mlnomadpy/cutvec/pull/5 (event 01KZA34V5KY2WYJRFM9F71W57Y)

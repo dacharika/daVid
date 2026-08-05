@@ -11,7 +11,53 @@ import (
 	"testing"
 
 	"github.com/tahabsn/cutvec/internal/axerror"
+	"github.com/tahabsn/cutvec/internal/project"
+	"github.com/tahabsn/cutvec/internal/worker"
 )
+
+// TestHelperProcess is not a real test: when GO_WANT_HELPER_PROCESS is set it is
+// re-exec'd (via `cutvec transcribe`'s worker path pointing at this test binary
+// with -test.run=TestHelperProcess) as a stand-in whisper worker. It reads the
+// JSON worker Request from stdin and prints a JSON Response to stdout, exercising
+// the real subprocess round-trip without a python interpreter or whisper model.
+func TestHelperProcess(t *testing.T) {
+	if os.Getenv("GO_WANT_HELPER_PROCESS") != "1" {
+		return
+	}
+	in, _ := io.ReadAll(os.Stdin)
+	var req worker.Request
+	_ = json.Unmarshal(in, &req)
+
+	switch os.Getenv("WORKER_MODE") {
+	case "transcribe":
+		resp := worker.Response{
+			Version: worker.ContractVersion,
+			Result: map[string]any{
+				"language": "en",
+				"text":     "hello world",
+				"words": []map[string]any{
+					{"word": "hello", "start": 0.0, "end": 0.5},
+					{"word": "world", "start": 0.5, "end": 1.0},
+				},
+			},
+		}
+		out, _ := json.Marshal(resp)
+		os.Stdout.Write(out)
+		os.Exit(0)
+	}
+	os.Exit(0)
+}
+
+// transcribeWorkerEnv points transcribe at this test binary as the whisper
+// worker: t.Setenv marks it a helper process running only TestHelperProcess in
+// the given WORKER_MODE. The worker inherits these vars (Invoke leaves the child
+// env alone unless Worker.Env is set), and the request carries the path + args.
+func transcribeWorkerEnv(t *testing.T, mode string) (path string, args []string) {
+	t.Helper()
+	t.Setenv("GO_WANT_HELPER_PROCESS", "1")
+	t.Setenv("WORKER_MODE", mode)
+	return os.Args[0], []string{"-test.run=TestHelperProcess"}
+}
 
 // TestRunDispatch exercises the CLI entry point end-to-end: run() is the single
 // dispatcher every human or agent call passes through, so asserting on its
@@ -469,6 +515,178 @@ func TestStateModelFailureRules(t *testing.T) {
 		{name: "ingest missing file", args: []string{"ingest"}, stdin: `{"project":"` + initialized + `","source":"` + missingSrc + `"}`, code: "source.missing"},
 		{name: "status uninitialized", args: []string{"status", "--json"}, stdin: `{"project":"` + filepath.Join(t.TempDir(), "none") + `"}`, code: "project.uninitialized"},
 		{name: "status unknown flag", args: []string{"status", "--bogus"}, stdin: "", code: "cli.unknown_flag"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := run(tc.args, strings.NewReader(tc.stdin), io.Discard)
+			var ae *axerror.Error
+			if !errors.As(err, &ae) {
+				t.Fatalf("err = %v, want *axerror.Error", err)
+			}
+			if ae.Code != tc.code {
+				t.Fatalf("code = %q, want %q", ae.Code, tc.code)
+			}
+		})
+	}
+}
+
+// ingestFixture inits a project and ingests a source with the given bytes,
+// returning the project dir and the source path — the setup every transcribe
+// test starts from.
+func ingestFixture(t *testing.T, contents string) (dir, src string) {
+	t.Helper()
+	dir = filepath.Join(t.TempDir(), "proj")
+	runJSON(t, []string{"init"}, map[string]any{"project": dir}, nil)
+	src = filepath.Join(t.TempDir(), "raw.wav")
+	if err := os.WriteFile(src, []byte(contents), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	runJSON(t, []string{"ingest"}, map[string]any{"project": dir, "source": src}, nil)
+	return dir, src
+}
+
+// transcribeReply is the JSON handle transcribe returns.
+type transcribeReply struct {
+	Transcript string `json:"transcript"`
+	Source     string `json:"source"`
+	Words      int    `json:"words"`
+	Language   string `json:"language"`
+	Cached     bool   `json:"cached"`
+	Planned    bool   `json:"planned"`
+}
+
+// TestTranscribeWordLevel is acceptance #1: `cutvec transcribe <project> --json`
+// returns a handle, and the transcript at that handle carries word-level
+// start/end times. The project is given as a positional argument (the AC form).
+func TestTranscribeWordLevel(t *testing.T) {
+	dir, _ := ingestFixture(t, "fake audio bytes")
+	wpath, wargs := transcribeWorkerEnv(t, "transcribe")
+
+	var res transcribeReply
+	req := map[string]any{"worker": wpath, "workerArgs": wargs}
+	b, _ := json.Marshal(req)
+	var out bytes.Buffer
+	if err := run([]string{"transcribe", dir, "--json"}, bytes.NewReader(b), &out); err != nil {
+		t.Fatalf("transcribe = %v, want nil", err)
+	}
+	if err := json.Unmarshal(out.Bytes(), &res); err != nil {
+		t.Fatalf("result is not JSON: %v\n%s", err, out.String())
+	}
+	if res.Cached {
+		t.Fatal("first transcribe cached = true, want false (cache miss)")
+	}
+	if res.Words != 2 || res.Language != "en" || res.Transcript == "" || res.Source == "" {
+		t.Fatalf("result = %+v, want words:2 language:en with a handle and source hash", res)
+	}
+
+	// The handle points at a real file whose transcript has word-level timing.
+	tb, err := os.ReadFile(res.Transcript)
+	if err != nil {
+		t.Fatalf("transcript handle %q is not readable: %v", res.Transcript, err)
+	}
+	var got project.Transcript
+	if err := json.Unmarshal(tb, &got); err != nil {
+		t.Fatalf("transcript is not JSON: %v\n%s", err, tb)
+	}
+	if len(got.Words) != 2 {
+		t.Fatalf("transcript has %d words, want 2", len(got.Words))
+	}
+	if got.Words[0].Word != "hello" || got.Words[0].Start != 0.0 || got.Words[0].End != 0.5 {
+		t.Fatalf("word[0] = %+v, want {hello 0 0.5}", got.Words[0])
+	}
+	if got.Words[1].Start != 0.5 || got.Words[1].End != 1.0 {
+		t.Fatalf("word[1] timing = %+v, want start 0.5 end 1.0", got.Words[1])
+	}
+	if got.Source != res.Source {
+		t.Fatalf("transcript source = %q, want the returned handle's source %q", got.Source, res.Source)
+	}
+}
+
+// TestTranscribeCacheHitIdempotent is acceptance #2: the transcript is cached and
+// idempotent. The second run is a content-hash cache hit that returns cached=true
+// and runs NO worker — proven by pointing it at a non-existent worker, which
+// would fail with worker.missing if the cache were bypassed.
+func TestTranscribeCacheHitIdempotent(t *testing.T) {
+	dir, _ := ingestFixture(t, "fake audio bytes")
+	wpath, wargs := transcribeWorkerEnv(t, "transcribe")
+
+	var first transcribeReply
+	runJSON(t, []string{"transcribe", dir}, map[string]any{"worker": wpath, "workerArgs": wargs}, &first)
+	if first.Cached {
+		t.Fatal("first transcribe cached = true, want false")
+	}
+
+	// Second run with a worker that cannot start: a cache hit never touches it.
+	var second transcribeReply
+	runJSON(t, []string{"transcribe", dir}, map[string]any{"worker": "/nonexistent/whisper-worker"}, &second)
+	if !second.Cached {
+		t.Fatal("second transcribe cached = false, want true (cache hit on unchanged bytes)")
+	}
+	if second.Transcript != first.Transcript || second.Source != first.Source || second.Words != first.Words {
+		t.Fatalf("cache hit changed the handle: first %+v second %+v", first, second)
+	}
+}
+
+// TestTranscribePlanWritesNothing asserts --plan reports the handle and cache
+// status without running the worker or writing a transcript.
+func TestTranscribePlanWritesNothing(t *testing.T) {
+	dir, _ := ingestFixture(t, "fake audio bytes")
+
+	var res transcribeReply
+	// No worker configured: --plan must still succeed since it runs none.
+	runJSON(t, []string{"transcribe", dir, "--plan"}, map[string]any{}, &res)
+	if !res.Planned || res.Cached {
+		t.Fatalf("plan result = %+v, want planned:true cached:false", res)
+	}
+	if res.Transcript == "" {
+		t.Fatal("plan result has no transcript handle")
+	}
+	if _, err := os.Stat(res.Transcript); !os.IsNotExist(err) {
+		t.Fatalf("--plan wrote the transcript (stat err = %v), want it absent", err)
+	}
+}
+
+// TestTranscribeWorkerErrorMapsThrough asserts a structured error the worker
+// reports is surfaced as its axerror code, not masked as a generic failure.
+func TestTranscribeWorkerErrorMapsThrough(t *testing.T) {
+	dir, _ := ingestFixture(t, "fake audio bytes")
+	// A worker that exits non-zero with no structured error is a retryable crash.
+	err := run([]string{"transcribe", dir},
+		strings.NewReader(`{"worker":"/nonexistent/whisper-worker"}`), io.Discard)
+	var ae *axerror.Error
+	if !errors.As(err, &ae) {
+		t.Fatalf("err = %v, want *axerror.Error", err)
+	}
+	if ae.Code != "worker.missing" {
+		t.Fatalf("code = %q, want worker.missing", ae.Code)
+	}
+}
+
+// TestTranscribeFailureRules pins the written behaviour for empty and malformed
+// input: each maps to a stable, machine-branchable axerror code.
+func TestTranscribeFailureRules(t *testing.T) {
+	initialized := filepath.Join(t.TempDir(), "proj")
+	if err := run([]string{"init"}, strings.NewReader(`{"project":"`+initialized+`"}`), io.Discard); err != nil {
+		t.Fatal(err)
+	}
+	// Initialised but no sources ingested -> nothing to transcribe.
+	empty := filepath.Join(t.TempDir(), "empty")
+	if err := run([]string{"init"}, strings.NewReader(`{"project":"`+empty+`"}`), io.Discard); err != nil {
+		t.Fatal(err)
+	}
+
+	cases := []struct {
+		name  string
+		args  []string
+		stdin string
+		code  string
+	}{
+		{name: "no project", args: []string{"transcribe"}, stdin: "", code: "input.invalid"},
+		{name: "two positional projects", args: []string{"transcribe", "a", "b"}, stdin: "", code: "input.invalid"},
+		{name: "unknown flag", args: []string{"transcribe", "--bogus"}, stdin: "", code: "cli.unknown_flag"},
+		{name: "uninitialized", args: []string{"transcribe", filepath.Join(t.TempDir(), "none")}, stdin: "", code: "project.uninitialized"},
+		{name: "no sources", args: []string{"transcribe", empty}, stdin: "", code: "input.empty"},
+		{name: "malformed json", args: []string{"transcribe", initialized}, stdin: `{not json`, code: "input.invalid"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

@@ -84,6 +84,53 @@ func TestIngestRequiresInit(t *testing.T) {
 	}
 }
 
+// TestTranscriptCacheRoundTrip is the unit-level proof that a transcript is
+// content-addressed and idempotent: before it is written HasTranscript is false,
+// after WriteTranscript the same bytes round-trip back through ReadTranscript,
+// and the entry is namespaced away from the bare source cache key.
+func TestTranscriptCacheRoundTrip(t *testing.T) {
+	p := Open(filepath.Join(t.TempDir(), "proj"))
+	if _, _, err := p.Init(""); err != nil {
+		t.Fatal(err)
+	}
+	const hash = "d667df3e603bd8c3deadbeef"
+
+	if p.HasTranscript(hash) {
+		t.Fatal("HasTranscript = true before any transcript was written")
+	}
+	tr := Transcript{
+		Source:   hash,
+		Language: "en",
+		Text:     "hello world",
+		Words: []Word{
+			{Word: "hello", Start: 0.0, End: 0.5},
+			{Word: "world", Start: 0.5, End: 1.0},
+		},
+	}
+	if err := p.WriteTranscript(hash, tr); err != nil {
+		t.Fatal(err)
+	}
+	if !p.HasTranscript(hash) {
+		t.Fatal("HasTranscript = false after WriteTranscript (cache miss on unchanged bytes)")
+	}
+	// The transcript cache key must not collide with the source record ingest
+	// writes under the bare hash.
+	if p.TranscriptPath(hash) == p.cachePath(hash) {
+		t.Fatalf("transcript path %q collides with the source cache path", p.TranscriptPath(hash))
+	}
+
+	got, err := p.ReadTranscript(hash)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Source != hash || got.Language != "en" || len(got.Words) != 2 {
+		t.Fatalf("read transcript = %+v, want the written one", got)
+	}
+	if got.Words[1].Start != 0.5 || got.Words[1].End != 1.0 {
+		t.Fatalf("word[1] timing = %+v, want start 0.5 end 1.0", got.Words[1])
+	}
+}
+
 // TestStatusReflectsArtifacts asserts the state graph flips an artifact from
 // pending to done when its file appears on disk.
 func TestStatusReflectsArtifacts(t *testing.T) {
