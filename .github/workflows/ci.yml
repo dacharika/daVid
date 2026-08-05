@@ -22,7 +22,10 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: 'stable'
+          # Pin the toolchain to the version go.mod declares so CI is
+          # deterministic (a floating 'stable' can drift under us) — the
+          # project's determinism value applies to its own build too.
+          go-version-file: 'go.mod'
           cache: 'false'
       - name: Download modules
         run: go mod download
