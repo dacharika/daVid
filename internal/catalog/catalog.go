@@ -93,6 +93,75 @@ func Default() Catalog {
 				OutputSchema: objectSchema(),
 			},
 			{
+				Name:    "init",
+				Summary: "Create a project directory with a project.json manifest (idempotent).",
+				InputSchema: Schema{
+					"type":     "object",
+					"required": []any{"project"},
+					"properties": map[string]any{
+						"project": map[string]any{"type": "string", "description": "directory to initialise as a project"},
+						"name":    map[string]any{"type": "string", "description": "display name; defaults to the directory base name"},
+					},
+				},
+				OutputSchema: Schema{
+					"type": "object",
+					"properties": map[string]any{
+						"project":  map[string]any{"type": "string", "description": "the project directory"},
+						"manifest": map[string]any{"type": "string", "description": "handle: path to project.json"},
+						"name":     map[string]any{"type": "string", "description": "the project's display name"},
+						"created":  map[string]any{"type": "boolean", "description": "true when this call created the manifest; false if it already existed"},
+						"planned":  map[string]any{"type": "boolean", "description": "true when --plan was set and nothing was written"},
+					},
+				},
+			},
+			{
+				Name:    "ingest",
+				Summary: "Record a source media file in the project, keyed by its content hash (idempotent, cached).",
+				InputSchema: Schema{
+					"type":     "object",
+					"required": []any{"project", "source"},
+					"properties": map[string]any{
+						"project": map[string]any{"type": "string", "description": "the project directory"},
+						"source":  map[string]any{"type": "string", "description": "path to the media file to ingest"},
+					},
+				},
+				OutputSchema: Schema{
+					"type": "object",
+					"properties": map[string]any{
+						"source": map[string]any{
+							"type":        "object",
+							"description": "the recorded source",
+							"properties": map[string]any{
+								"id":   map[string]any{"type": "string", "description": "short content-hash handle"},
+								"path": map[string]any{"type": "string", "description": "resource path ingested from"},
+								"hash": map[string]any{"type": "string", "description": "full sha256 of the file contents"},
+							},
+						},
+						"cached":  map[string]any{"type": "boolean", "description": "true on a content-hash cache hit (identical bytes seen before)"},
+						"planned": map[string]any{"type": "boolean", "description": "true when --plan was set and nothing was written"},
+					},
+				},
+			},
+			{
+				Name:    "status",
+				Summary: "Return the project state graph: sources ingested and artifacts marked done/pending.",
+				InputSchema: Schema{
+					"type": "object",
+					"properties": map[string]any{
+						"project": map[string]any{"type": "string", "description": "the project directory; defaults to the current directory"},
+					},
+				},
+				OutputSchema: Schema{
+					"type": "object",
+					"properties": map[string]any{
+						"project":   map[string]any{"type": "string", "description": "the project directory"},
+						"name":      map[string]any{"type": "string", "description": "the project's display name"},
+						"sources":   map[string]any{"type": "array", "description": "sources ingested so far", "items": map[string]any{"type": "object"}},
+						"artifacts": map[string]any{"type": "array", "description": "derived outputs, each with a done/pending status", "items": map[string]any{"type": "object"}},
+					},
+				},
+			},
+			{
 				Name:    "timeline",
 				Summary: "Build an MLT XML timeline from clips and write it into the project directory.",
 				InputSchema: Schema{
