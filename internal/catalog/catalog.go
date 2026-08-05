@@ -41,6 +41,40 @@ func Default() Catalog {
 				InputSchema:  objectSchema(),
 				OutputSchema: objectSchema(),
 			},
+			{
+				Name:    "timeline",
+				Summary: "Build an MLT XML timeline from clips and write it into the project directory.",
+				InputSchema: Schema{
+					"type":     "object",
+					"required": []any{"project", "clips"},
+					"properties": map[string]any{
+						"project": map[string]any{
+							"type":        "string",
+							"description": "project directory the timeline is written into",
+						},
+						"clips": map[string]any{
+							"type":        "array",
+							"description": "ordered media sources placed on the timeline",
+							"items": map[string]any{
+								"type":     "object",
+								"required": []any{"resource"},
+								"properties": map[string]any{
+									"id":       map[string]any{"type": "string", "description": "producer id; defaults to producerN"},
+									"resource": map[string]any{"type": "string", "description": "path to the media file"},
+								},
+							},
+						},
+					},
+				},
+				OutputSchema: Schema{
+					"type": "object",
+					"properties": map[string]any{
+						"timeline":  map[string]any{"type": "string", "description": "handle: path to the written MLT document"},
+						"producers": map[string]any{"type": "integer", "description": "number of producers placed"},
+						"planned":   map[string]any{"type": "boolean", "description": "true when --plan was set and nothing was written"},
+					},
+				},
+			},
 		},
 	}
 }

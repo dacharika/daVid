@@ -26,6 +26,25 @@ go build -o build/cutvec ./cmd/cutvec
 `describe` is the entry point every agent starts from: one self-describing
 catalog backs both the CLI and the MCP server, so the two surfaces never drift.
 
+## First feature slice: build a timeline
+
+The `timeline` tool is the first edit operation carried end to end. It reads a
+JSON clip list on stdin, builds the MLT XML timeline — the artifact an agent
+mutates — writes it into the project directory, and returns a **handle** (a
+path), not the XML blob:
+
+```sh
+echo '{"project":"proj","clips":[{"id":"cam1","resource":"raw.mp4"},{"resource":"broll.mp4"}]}' \
+  | ./build/cutvec timeline
+# → {"timeline":"proj/timeline.mlt","producers":2}
+```
+
+Add `--plan` for a dry-run that reports what it would write and touches nothing
+(`{"planned":true}`). Failure and empty input have written rules: empty stdin or
+an empty `clips` list returns `input.empty`; a missing `project`, an empty
+`resource`, or malformed JSON returns `input.invalid` — every failure is the
+structured `{code, hint, retryable}` shape on stderr with a non-zero exit.
+
 ## Layout
 
 ```
@@ -76,5 +95,8 @@ hits the content-hash cache instead of re-running the worker.
 
 ## Status
 
-Scaffold. The layout builds and tests green; `cutvec describe` returns the seed
-catalog. Each bounded concern above is a real package that later slices flesh out.
+First slice landed. The layout builds and tests green; `cutvec describe` returns
+the catalog and `cutvec timeline` carries a request from the CLI entry point
+through `catalog` → `timeline` → `project` (storage) and back as a JSON handle —
+the full data-flow path above, minus the Python worker that later slices add.
+Each remaining bounded concern is a real package that later slices flesh out.

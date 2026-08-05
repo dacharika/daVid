@@ -25,3 +25,9 @@ func Open(dir string) Project {
 func (p Project) CacheDir() string {
 	return filepath.Join(p.Dir, "cache")
 }
+
+// TimelinePath is where the project's MLT timeline document lives — the handle
+// a timeline-building step returns instead of the XML blob itself.
+func (p Project) TimelinePath() string {
+	return filepath.Join(p.Dir, "timeline.mlt")
+}
