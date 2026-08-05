@@ -162,6 +162,31 @@ func Default() Catalog {
 				},
 			},
 			{
+				Name:    "transcribe",
+				Summary: "Transcribe an ingested source to a word-level transcript via the whisper worker (cached, idempotent).",
+				InputSchema: Schema{
+					"type":     "object",
+					"required": []any{"project"},
+					"properties": map[string]any{
+						"project":    map[string]any{"type": "string", "description": "the project directory (also accepted as a positional argument)"},
+						"source":     map[string]any{"type": "string", "description": "path, id, or hash of the ingested source to transcribe; optional when the project has exactly one source"},
+						"worker":     map[string]any{"type": "string", "description": "path to the whisper worker executable; defaults to the CUTVEC_WHISPER_WORKER env var"},
+						"workerArgs": map[string]any{"type": "array", "description": "fixed leading arguments passed to the worker", "items": map[string]any{"type": "string"}},
+					},
+				},
+				OutputSchema: Schema{
+					"type": "object",
+					"properties": map[string]any{
+						"transcript": map[string]any{"type": "string", "description": "handle: path to the cached word-level transcript JSON"},
+						"source":     map[string]any{"type": "string", "description": "content hash of the transcribed source"},
+						"words":      map[string]any{"type": "integer", "description": "number of timecoded words in the transcript"},
+						"language":   map[string]any{"type": "string", "description": "detected language, when the worker reports one"},
+						"cached":     map[string]any{"type": "boolean", "description": "true on a content-hash cache hit (the transcript already existed, no worker ran)"},
+						"planned":    map[string]any{"type": "boolean", "description": "true when --plan was set and nothing was written"},
+					},
+				},
+			},
+			{
 				Name:    "timeline",
 				Summary: "Build an MLT XML timeline from clips and write it into the project directory.",
 				InputSchema: Schema{
