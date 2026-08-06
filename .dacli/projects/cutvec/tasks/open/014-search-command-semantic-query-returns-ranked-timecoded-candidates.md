@@ -14,3 +14,4 @@ an agent asks for a moment by meaning and gets timecodes + scores
 - [ ] cutvec search <project> '<query>' --json returns ranked {start,end,text,score}
 - [ ] results are deterministic for a fixed query+index
 ## Log
+- 2026-08-06T06:00:12Z claimed by a-fixer-2c1f26

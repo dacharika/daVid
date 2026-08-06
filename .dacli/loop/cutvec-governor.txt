@@ -1,4 +1,4 @@
-cycle: 24
+cycle: 25
 window_start: 0001-01-01T00:00:00Z
-window_spent: 322393
-zero_streak: 1
+window_spent: 329343
+zero_streak: 2
