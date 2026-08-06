@@ -56,6 +56,19 @@ turns=$(req "$W/mediapipe_worker.py" | eval $CLI speakers $PROJ --json 2>/dev/nu
   | grep -oE '"turns": *[0-9]+' | grep -oE '[0-9]+')
 [[ -n ${turns:-} && $turns -gt 0 ]] && ok "$turns turns" || bad "no speaker turns"
 
+step render
+print "{\"project\":\"$PROJ\",\"clips\":[{\"resource\":\"$MEDIA\",\"id\":\"clip1\"}]}" \
+  | eval $CLI timeline >/dev/null 2>&1
+out=$(req "$W/melt_worker.py" ",\"quality\":\"proxy\"" \
+  | eval $CLI render $PROJ --json 2>/dev/null \
+  | grep -oE '"output": *"[^"]+"' | sed 's/.*"output": *"//;s/"$//')
+if [[ -n ${out:-} && -s ${out:-/nonexistent} ]]; then
+  dur=$(ffprobe -v error -show_entries format=duration -of default=nk=1:nw=1 "$out" 2>/dev/null)
+  ok "wrote a ${dur:-?}s video"
+else
+  bad "render produced no video"
+fi
+
 step "cache is idempotent"
 cached=$(print "{\"project\":\"$PROJ\",\"worker\":\"/nonexistent\"}" \
   | eval $CLI transcribe $PROJ --json 2>/dev/null | grep -oE '"cached": *true')
