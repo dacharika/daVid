@@ -11,6 +11,10 @@ estimate: "{optimistic: 3, probable: 5, pessimistic: 8}"
 ## So that
 search retrieves moments semantically instead of scanning the transcript
 ## Acceptance
-- [ ] cutvec index <project> builds a local LanceDB index of transcript segments
-- [ ] no network / API key required
+- [x] cutvec index <project> builds a local LanceDB index of transcript segments
+- [x] no network / API key required
 ## Log
+- 2026-08-06T01:45:01Z claimed by a-fixer-dd5gc1
+- 2026-08-06T06:00:09Z accepted by a-root
+- 2026-08-06T06:00:09Z verified by `go build ./... && go test ./...` (exit 0)
+- 2026-08-06T06:00:09Z completed by a-root

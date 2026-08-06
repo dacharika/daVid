@@ -101,6 +101,34 @@ an empty `clips` list returns `input.empty`; a missing `project`, an empty
 `resource`, or malformed JSON returns `input.invalid` — every failure is the
 structured `{code, hint, retryable}` shape on stderr with a non-zero exit.
 
+## Render: timeline to video, cached per quality
+
+`render` turns a project's built MLT timeline into an output video with the melt
+worker (a subprocess speaking the versioned JSON contract; point at it with
+`"worker"` in the request or the `CUTVEC_MELT_WORKER` env var). The result is
+keyed on the timeline's content hash **and** the quality tier, so proxy and final
+renders coexist and a re-run at the same tier is a **cache hit** that invokes no
+worker. Choose the tier with `--proxy` (fast draft, the default) or `--final`
+(full quality):
+
+```sh
+./build/cutvec render proj --json < /dev/null
+# → {"output":"proj/cache/render-<hash>-proxy.mp4","timeline":"proj/timeline.mlt","source":"<hash>","quality":"proxy","cached":false}
+./build/cutvec render proj --final --json < /dev/null
+# → {"output":"proj/cache/render-<hash>-final.mp4",…,"quality":"final","cached":false}
+./build/cutvec render proj --json < /dev/null   # re-run at proxy
+# → {"output":"proj/cache/render-<hash>-proxy.mp4",…,"cached":true}   (no worker ran)
+```
+
+The project may be a positional argument (`render proj`) or `"project"` in a JSON
+request; the returned `output` is a **handle** to the rendered file, not the video
+blob. `--plan` reports the handle and cache status without running the worker.
+Failure rules: choosing both `--proxy` and `--final`, an unknown quality, or a
+missing/too-many project returns `input.invalid`; an uninitialised directory
+returns `project.uninitialized`; a project with no built timeline returns
+`timeline.missing`; no configured worker returns `worker.missing`; and a worker
+that crashes or does not write the output maps to `worker.crashed`/`worker.protocol`.
+
 ## Layout
 
 ```
@@ -151,8 +179,12 @@ hits the content-hash cache instead of re-running the worker.
 
 ## Status
 
-First slice landed. The layout builds and tests green; `cutvec describe` returns
-the catalog and `cutvec timeline` carries a request from the CLI entry point
-through `catalog` → `timeline` → `project` (storage) and back as a JSON handle —
-the full data-flow path above, minus the Python worker that later slices add.
-Each remaining bounded concern is a real package that later slices flesh out.
+The layout builds and tests green from a clean checkout. `cutvec describe`
+returns the catalog of seven tools — `describe`, `init`, `ingest`, `status`,
+`transcribe`, `timeline`, `render` — and each carries a request from the CLI
+entry point through `catalog` → its handler → `project` (storage) and back as a
+JSON handle. `transcribe` and `render` complete the full data-flow path above,
+crossing the `worker` boundary to a subprocess (stubbed in tests by a re-exec'd
+fake worker, so `go test ./...` needs no Python, whisper, or melt on `PATH`).
+Later slices flesh out the remaining edits (active-speaker reframe, vertical
+shorts, captions, grade, denoise, SFX) and the `cutvec mcp` server surface.

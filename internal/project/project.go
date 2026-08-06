@@ -388,6 +388,24 @@ func (p Project) ReadSpeakers(hash string) (Speakers, error) {
 	return s, nil
 }
 
+// renderKey namespaces a render cache entry by the timeline's content hash and
+// the quality tier, so proxy and final renders of the same timeline never
+// collide and each re-run resolves to its own stable handle.
+func renderKey(hash, quality string) string { return "render-" + hash + "-" + quality }
+
+// RenderPath is the handle a render step returns: the path to the rendered video
+// for the timeline with the given content hash at the given quality tier.
+func (p Project) RenderPath(hash, quality string) string {
+	return filepath.Join(p.CacheDir(), renderKey(hash, quality)+".mp4")
+}
+
+// HasRender reports whether the timeline has already been rendered at this
+// quality — i.e. whether render is a cache hit for these timeline bytes.
+func (p Project) HasRender(hash, quality string) bool {
+	_, err := os.Stat(p.RenderPath(hash, quality))
+	return err == nil
+}
+
 // hasSource reports whether a source with the given content hash is already in ss.
 func hasSource(ss []Source, hash string) bool {
 	for _, s := range ss {
@@ -434,6 +452,14 @@ func (p Project) Status() (StateGraph, error) {
 		return StateGraph{}, err
 	}
 	artifacts := []Artifact{p.artifact("timeline", p.TimelinePath())}
+	// Render artifacts are per-quality outputs keyed by the timeline's content
+	// hash, so they only become resolvable once a timeline has been built to hash.
+	// Each tier is done once its cache entry exists, pending until then.
+	if hash, err := HashFile(p.TimelinePath()); err == nil {
+		artifacts = append(artifacts,
+			p.artifact("render:proxy", p.RenderPath(hash, "proxy")),
+			p.artifact("render:final", p.RenderPath(hash, "final")))
+	}
 	// A transcript and a speaker track are per-source artifacts, each done once
 	// its cache entry exists.
 	for _, s := range m.Sources {
