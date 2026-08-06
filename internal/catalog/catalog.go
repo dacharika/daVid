@@ -187,6 +187,31 @@ func Default() Catalog {
 				},
 			},
 			{
+				Name:    "speakers",
+				Summary: "Detect the active speaker over time for an ingested source via the mediapipe worker, against a fixed two-person layout (cached, idempotent).",
+				InputSchema: Schema{
+					"type":     "object",
+					"required": []any{"project"},
+					"properties": map[string]any{
+						"project":    map[string]any{"type": "string", "description": "the project directory (also accepted as a positional argument)"},
+						"source":     map[string]any{"type": "string", "description": "path, id, or hash of the ingested source to analyse; optional when the project has exactly one source"},
+						"worker":     map[string]any{"type": "string", "description": "path to the mediapipe worker executable; defaults to the CUTVEC_MEDIAPIPE_WORKER env var"},
+						"workerArgs": map[string]any{"type": "array", "description": "fixed leading arguments passed to the worker", "items": map[string]any{"type": "string"}},
+					},
+				},
+				OutputSchema: Schema{
+					"type": "object",
+					"properties": map[string]any{
+						"speakers": map[string]any{"type": "string", "description": "handle: path to the cached active-speaker turns JSON"},
+						"source":   map[string]any{"type": "string", "description": "content hash of the analysed source"},
+						"layout":   map[string]any{"type": "string", "description": "the fixed speaker layout the turns were computed against"},
+						"turns":    map[string]any{"type": "integer", "description": "number of per-time speaker turns"},
+						"cached":   map[string]any{"type": "boolean", "description": "true on a content-hash cache hit (the analysis already existed, no worker ran)"},
+						"planned":  map[string]any{"type": "boolean", "description": "true when --plan was set and nothing was written"},
+					},
+				},
+			},
+			{
 				Name:    "timeline",
 				Summary: "Build an MLT XML timeline from clips and write it into the project directory.",
 				InputSchema: Schema{

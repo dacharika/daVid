@@ -316,6 +316,78 @@ func (p Project) ReadTranscript(hash string) (Transcript, error) {
 	return t, nil
 }
 
+// TwoPersonLayout is the fixed speaker layout the speakers step analyses against:
+// two people in a stable side-by-side frame. It is a constant, not a request
+// parameter — so the speakers cache key stays the bare source content hash with
+// no risk of two layouts colliding on one key.
+const TwoPersonLayout = "two-person"
+
+// Turn is one contiguous span of time attributed to a single speaker, in seconds
+// from the start of the media. A sequence of turns is the active-speaker track an
+// editor uses to reframe and to build speaker-locked shorts.
+type Turn struct {
+	// Speaker is the label of who is speaking during the span (e.g. the fixed
+	// two-person layout's "left"/"right").
+	Speaker string  `json:"speaker"`
+	Start   float64 `json:"start"`
+	End     float64 `json:"end"`
+}
+
+// Speakers is the active-speaker analysis of one source, as returned by the
+// mediapipe worker and cached in the project. It is content-addressed by Source
+// (the sha256 of the analysed media), so re-analysing identical bytes is a cache
+// hit. Layout records the fixed layout the turns were computed against.
+type Speakers struct {
+	// Source is the content hash of the media this analysis was produced from.
+	Source string `json:"source"`
+	// Layout is the fixed speaker layout the turns were computed against.
+	Layout string `json:"layout"`
+	// Turns are the ordered per-time speaker spans.
+	Turns []Turn `json:"turns"`
+}
+
+// speakersKey namespaces a speakers cache entry so it never collides with the
+// source record ingest writes under the bare content hash, nor with a transcript.
+func speakersKey(hash string) string { return "speakers-" + hash }
+
+// SpeakersPath is the handle a speakers step returns: the path to the cached
+// active-speaker turns for the source with the given content hash.
+func (p Project) SpeakersPath(hash string) string {
+	return p.cachePath(speakersKey(hash))
+}
+
+// HasSpeakers reports whether an active-speaker analysis for the source has
+// already been produced — i.e. whether speakers is a cache hit for these bytes.
+func (p Project) HasSpeakers(hash string) bool {
+	return p.CacheHit(speakersKey(hash))
+}
+
+// WriteSpeakers stores the analysis as the cache entry for its source hash,
+// creating the cache directory if needed.
+func (p Project) WriteSpeakers(hash string, s Speakers) error {
+	if err := os.MkdirAll(p.CacheDir(), 0o755); err != nil {
+		return err
+	}
+	b, err := json.MarshalIndent(s, "", "  ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(p.SpeakersPath(hash), append(b, '\n'), 0o644)
+}
+
+// ReadSpeakers reads the cached active-speaker analysis for the source hash.
+func (p Project) ReadSpeakers(hash string) (Speakers, error) {
+	b, err := os.ReadFile(p.SpeakersPath(hash))
+	if err != nil {
+		return Speakers{}, err
+	}
+	var s Speakers
+	if err := json.Unmarshal(b, &s); err != nil {
+		return Speakers{}, err
+	}
+	return s, nil
+}
+
 // renderKey namespaces a render cache entry by the timeline's content hash and
 // the quality tier, so proxy and final renders of the same timeline never
 // collide and each re-run resolves to its own stable handle.
@@ -388,9 +460,11 @@ func (p Project) Status() (StateGraph, error) {
 			p.artifact("render:proxy", p.RenderPath(hash, "proxy")),
 			p.artifact("render:final", p.RenderPath(hash, "final")))
 	}
-	// A transcript is a per-source artifact, done once its cache entry exists.
+	// A transcript and a speaker track are per-source artifacts, each done once
+	// its cache entry exists.
 	for _, s := range m.Sources {
 		artifacts = append(artifacts, p.artifact("transcript:"+s.ID, p.TranscriptPath(s.Hash)))
+		artifacts = append(artifacts, p.artifact("speakers:"+s.ID, p.SpeakersPath(s.Hash)))
 	}
 	return StateGraph{
 		Project:   p.Dir,
