@@ -187,6 +187,33 @@ func Default() Catalog {
 				},
 			},
 			{
+				Name:    "index",
+				Summary: "Embed an ingested source's transcript segments into a local LanceDB index via the embed worker (no network, cached, idempotent).",
+				InputSchema: Schema{
+					"type":     "object",
+					"required": []any{"project"},
+					"properties": map[string]any{
+						"project":    map[string]any{"type": "string", "description": "the project directory (also accepted as a positional argument)"},
+						"source":     map[string]any{"type": "string", "description": "path, id, or hash of the ingested source to index; optional when the project has exactly one source"},
+						"worker":     map[string]any{"type": "string", "description": "path to the local embedding worker executable; defaults to the CUTVEC_INDEX_WORKER env var"},
+						"workerArgs": map[string]any{"type": "array", "description": "fixed leading arguments passed to the worker", "items": map[string]any{"type": "string"}},
+					},
+				},
+				OutputSchema: Schema{
+					"type": "object",
+					"properties": map[string]any{
+						"index":    map[string]any{"type": "string", "description": "handle: path to the cached index metadata JSON"},
+						"table":    map[string]any{"type": "string", "description": "handle: path to the LanceDB .lance table of embedded segments"},
+						"source":   map[string]any{"type": "string", "description": "content hash of the indexed source"},
+						"segments": map[string]any{"type": "integer", "description": "number of transcript segments embedded"},
+						"dim":      map[string]any{"type": "integer", "description": "dimensionality of each embedding vector"},
+						"model":    map[string]any{"type": "string", "description": "local embedding model used, when the worker reports one"},
+						"cached":   map[string]any{"type": "boolean", "description": "true on a content-hash cache hit (the index already existed, no worker ran)"},
+						"planned":  map[string]any{"type": "boolean", "description": "true when --plan was set and nothing was written"},
+					},
+				},
+			},
+			{
 				Name:    "timeline",
 				Summary: "Build an MLT XML timeline from clips and write it into the project directory.",
 				InputSchema: Schema{

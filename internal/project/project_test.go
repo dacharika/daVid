@@ -158,3 +158,47 @@ func TestStatusReflectsArtifacts(t *testing.T) {
 		t.Fatalf("timeline status = %q, want done after the file exists", g.Artifacts[0].Status)
 	}
 }
+
+// TestIndexCacheRoundTrip is the unit-level proof that an index is
+// content-addressed and idempotent: before it is written HasIndex is false, after
+// WriteIndex the same bytes round-trip back through ReadIndex, and the entry is
+// namespaced away from both the bare source cache key and the transcript entry.
+func TestIndexCacheRoundTrip(t *testing.T) {
+	p := Open(filepath.Join(t.TempDir(), "proj"))
+	if _, _, err := p.Init(""); err != nil {
+		t.Fatal(err)
+	}
+	const hash = "d667df3e603bd8c3deadbeef"
+
+	if p.HasIndex(hash) {
+		t.Fatal("HasIndex = true before any index was written")
+	}
+	idx := Index{
+		Source:   hash,
+		Table:    p.IndexTablePath(hash),
+		Segments: 2,
+		Dim:      3,
+		Model:    "fake-local-embed",
+	}
+	if err := p.WriteIndex(hash, idx); err != nil {
+		t.Fatal(err)
+	}
+	if !p.HasIndex(hash) {
+		t.Fatal("HasIndex = false after WriteIndex (cache miss on unchanged bytes)")
+	}
+	// The index cache key must not collide with the source record or transcript.
+	if p.IndexPath(hash) == p.cachePath(hash) || p.IndexPath(hash) == p.TranscriptPath(hash) {
+		t.Fatalf("index path %q collides with another cache entry", p.IndexPath(hash))
+	}
+
+	got, err := p.ReadIndex(hash)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Source != hash || got.Segments != 2 || got.Dim != 3 || got.Model != "fake-local-embed" {
+		t.Fatalf("read index = %+v, want the written one", got)
+	}
+	if got.Table != p.IndexTablePath(hash) {
+		t.Fatalf("index table = %q, want %q", got.Table, p.IndexTablePath(hash))
+	}
+}
