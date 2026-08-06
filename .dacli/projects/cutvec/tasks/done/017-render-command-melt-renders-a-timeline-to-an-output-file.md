@@ -1,0 +1,21 @@
+---
+id: t-01KZ9WMYWNA8R2QQZ29S1GQTJ6
+kind: task
+created: 2026-08-05T21:18:10Z
+created_by: a-root
+owner: a-root
+priority: must
+estimate: "{optimistic: 3, probable: 5, pessimistic: 8}"
+---
+# render command: melt renders a timeline to an output file
+## So that
+a composed timeline becomes a real video deterministically
+## Acceptance
+- [x] cutvec render <timeline> --json returns the output handle
+- [x] supports --proxy and --final quality
+## Log
+- 2026-08-06T07:20:54Z claimed by a-fixer-0kc19a
+- 2026-08-06T07:27:55Z accepted by a-root
+- 2026-08-06T07:27:55Z verified by `go build ./... && go test ./...` (exit 0)
+- 2026-08-06T07:27:55Z completed by a-root
+- 2026-08-06T07:27:55Z a-fixer-0kc19a: PR opened: https://github.com/mlnomadpy/cutvec/pull/8 (event 01KZAZEDWC0827E4C20A6RBQVP)

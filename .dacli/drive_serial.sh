@@ -39,9 +39,10 @@ for i in $(seq 1 "$N"); do
   done
 
   git checkout main -q 2>/dev/null; git fetch origin -q 2>/dev/null; git merge origin/main -q -m sync 2>/dev/null
-  # accept the task(s) this cycle built (from the loop log), gated on green build+test
-  for num in $(grep -oE 'building 1 task|→ [0-9]+' .dacli/iter2.log | grep -oE '[0-9]+' | sort -u); do
-    dacli accept "$num" --verify "go build ./... && go test ./..." >> "$LOG" 2>&1 && echo "  accepted $num"
+  # accept ONLY tasks whose PR is CONFIRMED MERGED (no more false "done"s) + still open
+  for num in $(gh pr list --repo $REPO --state merged --json title -q '.[].title' 2>/dev/null | grep -oE '^[0-9]+' | sort -u); do
+    ls .dacli/projects/cutvec/tasks/open/$num-*.md >/dev/null 2>&1 || continue
+    dacli accept "$num" --verify "go build ./... && go test ./..." >> "$LOG" 2>&1 && echo "  accepted $num (PR merged)"
   done
   dacli sync >> "$LOG" 2>&1
   dacli status 2>&1 | head -1
