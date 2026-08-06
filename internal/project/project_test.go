@@ -131,6 +131,52 @@ func TestTranscriptCacheRoundTrip(t *testing.T) {
 	}
 }
 
+// TestSpeakersCacheRoundTrip is the unit-level proof that a speaker track is
+// content-addressed and idempotent: before it is written HasSpeakers is false,
+// after WriteSpeakers the same bytes round-trip back through ReadSpeakers, and the
+// entry is namespaced away from both the bare source cache key and the transcript.
+func TestSpeakersCacheRoundTrip(t *testing.T) {
+	p := Open(filepath.Join(t.TempDir(), "proj"))
+	if _, _, err := p.Init(""); err != nil {
+		t.Fatal(err)
+	}
+	const hash = "d667df3e603bd8c3deadbeef"
+
+	if p.HasSpeakers(hash) {
+		t.Fatal("HasSpeakers = true before any analysis was written")
+	}
+	sp := Speakers{
+		Source: hash,
+		Layout: TwoPersonLayout,
+		Turns: []Turn{
+			{Speaker: "left", Start: 0.0, End: 1.5},
+			{Speaker: "right", Start: 1.5, End: 3.0},
+		},
+	}
+	if err := p.WriteSpeakers(hash, sp); err != nil {
+		t.Fatal(err)
+	}
+	if !p.HasSpeakers(hash) {
+		t.Fatal("HasSpeakers = false after WriteSpeakers (cache miss on unchanged bytes)")
+	}
+	// The speakers cache key must collide with neither the source record nor the
+	// transcript entry ingest/transcribe write under the same hash.
+	if p.SpeakersPath(hash) == p.cachePath(hash) || p.SpeakersPath(hash) == p.TranscriptPath(hash) {
+		t.Fatalf("speakers path %q collides with another cache entry", p.SpeakersPath(hash))
+	}
+
+	got, err := p.ReadSpeakers(hash)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Source != hash || got.Layout != TwoPersonLayout || len(got.Turns) != 2 {
+		t.Fatalf("read speakers = %+v, want the written one", got)
+	}
+	if got.Turns[1].Speaker != "right" || got.Turns[1].Start != 1.5 || got.Turns[1].End != 3.0 {
+		t.Fatalf("turn[1] = %+v, want {right 1.5 3.0}", got.Turns[1])
+	}
+}
+
 // TestStatusReflectsArtifacts asserts the state graph flips an artifact from
 // pending to done when its file appears on disk.
 func TestStatusReflectsArtifacts(t *testing.T) {

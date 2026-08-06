@@ -11,6 +11,9 @@ estimate: "{optimistic: 8, probable: 13, pessimistic: 20}"
 ## So that
 the MLT XML timeline is the agent-editable artifact
 ## Acceptance
-- [ ] cutvec timeline new/add-clip/... mutate a valid .mlt file
-- [ ] cutvec timeline inspect --json returns the timeline structure; validate reports errors with hints
+- [x] cutvec timeline new/add-clip/... mutate a valid .mlt file
+- [x] cutvec timeline inspect --json returns the timeline structure; validate reports errors with hints
 ## Log
+- 2026-08-06T07:20:51Z accepted by a-root
+- 2026-08-06T07:20:51Z verified by `go build ./... && go test ./...` (exit 0)
+- 2026-08-06T07:20:51Z completed by a-root

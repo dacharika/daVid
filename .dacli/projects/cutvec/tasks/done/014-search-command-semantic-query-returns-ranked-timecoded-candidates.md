@@ -11,6 +11,10 @@ estimate: "{optimistic: 3, probable: 5, pessimistic: 8}"
 ## So that
 an agent asks for a moment by meaning and gets timecodes + scores
 ## Acceptance
-- [ ] cutvec search <project> '<query>' --json returns ranked {start,end,text,score}
-- [ ] results are deterministic for a fixed query+index
+- [x] cutvec search <project> '<query>' --json returns ranked {start,end,text,score}
+- [x] results are deterministic for a fixed query+index
 ## Log
+- 2026-08-06T06:00:12Z claimed by a-fixer-2c1f26
+- 2026-08-06T07:12:57Z accepted by a-root
+- 2026-08-06T07:12:57Z verified by `go build ./... && go test ./...` (exit 0)
+- 2026-08-06T07:12:57Z completed by a-root

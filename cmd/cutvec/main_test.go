@@ -61,6 +61,38 @@ func TestHelperProcess(t *testing.T) {
 		out, _ := json.Marshal(resp)
 		os.Stdout.Write(out)
 		os.Exit(0)
+	case "speakers":
+		// Echo the layout the core sent so the test can prove the fixed layout
+		// travels to the worker, and return two per-time turns.
+		layout, _ := req.Params["layout"].(string)
+		resp := worker.Response{
+			Version: worker.ContractVersion,
+			Result: map[string]any{
+				"layout": layout,
+				"turns": []map[string]any{
+					{"speaker": "left", "start": 0.0, "end": 1.5},
+					{"speaker": "right", "start": 1.5, "end": 3.0},
+				},
+			},
+		}
+		out, _ := json.Marshal(resp)
+		os.Stdout.Write(out)
+		os.Exit(0)
+	case "render":
+		// Stand in for melt: write a fake rendered video to the requested output
+		// path, then report success — exercising the real subprocess round-trip
+		// and the Go side's "did the worker write the file?" verification.
+		outPath, _ := req.Params["output"].(string)
+		if outPath != "" {
+			_ = os.WriteFile(outPath, []byte("fake rendered video"), 0o644)
+		}
+		resp := worker.Response{
+			Version: worker.ContractVersion,
+			Result:  map[string]any{"output": outPath},
+		}
+		out, _ := json.Marshal(resp)
+		os.Stdout.Write(out)
+		os.Exit(0)
 	}
 	os.Exit(0)
 }
@@ -73,6 +105,16 @@ func transcribeWorkerEnv(t *testing.T, mode string) (path string, args []string)
 	t.Helper()
 	t.Setenv("GO_WANT_HELPER_PROCESS", "1")
 	t.Setenv("WORKER_MODE", mode)
+	return os.Args[0], []string{"-test.run=TestHelperProcess"}
+}
+
+// speakersWorkerEnv points speakers at this test binary as the mediapipe worker,
+// re-exec'd as a helper process in WORKER_MODE=speakers — the same re-exec trick
+// transcribeWorkerEnv uses, so no python/mediapipe is needed on PATH.
+func speakersWorkerEnv(t *testing.T) (path string, args []string) {
+	t.Helper()
+	t.Setenv("GO_WANT_HELPER_PROCESS", "1")
+	t.Setenv("WORKER_MODE", "speakers")
 	return os.Args[0], []string{"-test.run=TestHelperProcess"}
 }
 
@@ -704,6 +746,397 @@ func TestTranscribeFailureRules(t *testing.T) {
 		{name: "uninitialized", args: []string{"transcribe", filepath.Join(t.TempDir(), "none")}, stdin: "", code: "project.uninitialized"},
 		{name: "no sources", args: []string{"transcribe", empty}, stdin: "", code: "input.empty"},
 		{name: "malformed json", args: []string{"transcribe", initialized}, stdin: `{not json`, code: "input.invalid"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := run(tc.args, strings.NewReader(tc.stdin), io.Discard)
+			var ae *axerror.Error
+			if !errors.As(err, &ae) {
+				t.Fatalf("err = %v, want *axerror.Error", err)
+			}
+			if ae.Code != tc.code {
+				t.Fatalf("code = %q, want %q", ae.Code, tc.code)
+			}
+		})
+	}
+}
+
+// speakersReply is the JSON handle speakers returns.
+type speakersReply struct {
+	Speakers string `json:"speakers"`
+	Source   string `json:"source"`
+	Layout   string `json:"layout"`
+	Turns    int    `json:"turns"`
+	Cached   bool   `json:"cached"`
+	Planned  bool   `json:"planned"`
+}
+
+// TestSpeakersTurns is acceptance #1: `cutvec speakers <project> --json` returns a
+// handle, and the analysis at that handle carries per-time speaker turns with
+// start/end times. The project is given as a positional argument (the AC form).
+func TestSpeakersTurns(t *testing.T) {
+	dir, _ := ingestFixture(t, "fake video bytes")
+	wpath, wargs := speakersWorkerEnv(t)
+
+	var res speakersReply
+	req := map[string]any{"worker": wpath, "workerArgs": wargs}
+	b, _ := json.Marshal(req)
+	var out bytes.Buffer
+	if err := run([]string{"speakers", dir, "--json"}, bytes.NewReader(b), &out); err != nil {
+		t.Fatalf("speakers = %v, want nil", err)
+	}
+	if err := json.Unmarshal(out.Bytes(), &res); err != nil {
+		t.Fatalf("result is not JSON: %v\n%s", err, out.String())
+	}
+	if res.Cached {
+		t.Fatal("first speakers cached = true, want false (cache miss)")
+	}
+	if res.Turns != 2 || res.Speakers == "" || res.Source == "" {
+		t.Fatalf("result = %+v, want turns:2 with a handle and source hash", res)
+	}
+	// AC2: the analysis is against the fixed two-person layout, not a request param.
+	if res.Layout != project.TwoPersonLayout {
+		t.Fatalf("layout = %q, want the fixed %q", res.Layout, project.TwoPersonLayout)
+	}
+
+	// The handle points at a real file whose turns carry per-time speaker labels.
+	sb, err := os.ReadFile(res.Speakers)
+	if err != nil {
+		t.Fatalf("speakers handle %q is not readable: %v", res.Speakers, err)
+	}
+	var got project.Speakers
+	if err := json.Unmarshal(sb, &got); err != nil {
+		t.Fatalf("speakers is not JSON: %v\n%s", err, sb)
+	}
+	if len(got.Turns) != 2 {
+		t.Fatalf("analysis has %d turns, want 2", len(got.Turns))
+	}
+	if got.Turns[0].Speaker != "left" || got.Turns[0].Start != 0.0 || got.Turns[0].End != 1.5 {
+		t.Fatalf("turn[0] = %+v, want {left 0 1.5}", got.Turns[0])
+	}
+	if got.Turns[1].Speaker != "right" || got.Turns[1].Start != 1.5 || got.Turns[1].End != 3.0 {
+		t.Fatalf("turn[1] = %+v, want {right 1.5 3.0}", got.Turns[1])
+	}
+	// The core fixes the layout on the recorded track, and the worker echoed back
+	// exactly the layout the core sent it — proving the fixed layout reaches it.
+	if got.Layout != project.TwoPersonLayout {
+		t.Fatalf("recorded layout = %q, want the fixed %q", got.Layout, project.TwoPersonLayout)
+	}
+	if got.Source != res.Source {
+		t.Fatalf("analysis source = %q, want the returned handle's source %q", got.Source, res.Source)
+	}
+}
+
+// TestSpeakersCacheHitIdempotent is acceptance #2's idempotency half: the speaker
+// track is cached and re-running is a content-hash cache hit that returns
+// cached=true and runs NO worker — proven by pointing the second run at a
+// non-existent worker, which would fail with worker.missing if the cache were
+// bypassed.
+func TestSpeakersCacheHitIdempotent(t *testing.T) {
+	dir, _ := ingestFixture(t, "fake video bytes")
+	wpath, wargs := speakersWorkerEnv(t)
+
+	var first speakersReply
+	runJSON(t, []string{"speakers", dir}, map[string]any{"worker": wpath, "workerArgs": wargs}, &first)
+	if first.Cached {
+		t.Fatal("first speakers cached = true, want false")
+	}
+
+	// Second run with a worker that cannot start: a cache hit never touches it.
+	var second speakersReply
+	runJSON(t, []string{"speakers", dir}, map[string]any{"worker": "/nonexistent/mediapipe-worker"}, &second)
+	if !second.Cached {
+		t.Fatal("second speakers cached = false, want true (cache hit on unchanged bytes)")
+	}
+	if second.Speakers != first.Speakers || second.Source != first.Source || second.Turns != first.Turns {
+		t.Fatalf("cache hit changed the handle: first %+v second %+v", first, second)
+	}
+}
+
+// TestSpeakersPlanWritesNothing asserts --plan reports the handle and cache status
+// without running the worker or writing an analysis.
+func TestSpeakersPlanWritesNothing(t *testing.T) {
+	dir, _ := ingestFixture(t, "fake video bytes")
+
+	var res speakersReply
+	// No worker configured: --plan must still succeed since it runs none.
+	runJSON(t, []string{"speakers", dir, "--plan"}, map[string]any{}, &res)
+	if !res.Planned || res.Cached {
+		t.Fatalf("plan result = %+v, want planned:true cached:false", res)
+	}
+	if res.Speakers == "" {
+		t.Fatal("plan result has no speakers handle")
+	}
+	if res.Layout != project.TwoPersonLayout {
+		t.Fatalf("plan layout = %q, want the fixed %q", res.Layout, project.TwoPersonLayout)
+	}
+	if _, err := os.Stat(res.Speakers); !os.IsNotExist(err) {
+		t.Fatalf("--plan wrote the analysis (stat err = %v), want it absent", err)
+	}
+}
+
+// TestSpeakersWorkerErrorMapsThrough asserts a worker that cannot start surfaces
+// as its axerror code, not masked as a generic failure.
+func TestSpeakersWorkerErrorMapsThrough(t *testing.T) {
+	dir, _ := ingestFixture(t, "fake video bytes")
+	err := run([]string{"speakers", dir},
+		strings.NewReader(`{"worker":"/nonexistent/mediapipe-worker"}`), io.Discard)
+	var ae *axerror.Error
+	if !errors.As(err, &ae) {
+		t.Fatalf("err = %v, want *axerror.Error", err)
+	}
+	if ae.Code != "worker.missing" {
+		t.Fatalf("code = %q, want worker.missing", ae.Code)
+	}
+}
+
+// TestSpeakersFailureRules pins the written behaviour for empty and malformed
+// input: each maps to a stable, machine-branchable axerror code.
+func TestSpeakersFailureRules(t *testing.T) {
+	initialized := filepath.Join(t.TempDir(), "proj")
+	if err := run([]string{"init"}, strings.NewReader(`{"project":"`+initialized+`"}`), io.Discard); err != nil {
+		t.Fatal(err)
+	}
+	// Initialised but no sources ingested -> nothing to analyse.
+	empty := filepath.Join(t.TempDir(), "empty")
+	if err := run([]string{"init"}, strings.NewReader(`{"project":"`+empty+`"}`), io.Discard); err != nil {
+		t.Fatal(err)
+	}
+
+	cases := []struct {
+		name  string
+		args  []string
+		stdin string
+		code  string
+	}{
+		{name: "no project", args: []string{"speakers"}, stdin: "", code: "input.invalid"},
+		{name: "two positional projects", args: []string{"speakers", "a", "b"}, stdin: "", code: "input.invalid"},
+		{name: "unknown flag", args: []string{"speakers", "--bogus"}, stdin: "", code: "cli.unknown_flag"},
+		{name: "uninitialized", args: []string{"speakers", filepath.Join(t.TempDir(), "none")}, stdin: "", code: "project.uninitialized"},
+		{name: "no sources", args: []string{"speakers", empty}, stdin: "", code: "input.empty"},
+		{name: "malformed json", args: []string{"speakers", initialized}, stdin: `{not json`, code: "input.invalid"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := run(tc.args, strings.NewReader(tc.stdin), io.Discard)
+			var ae *axerror.Error
+			if !errors.As(err, &ae) {
+				t.Fatalf("err = %v, want *axerror.Error", err)
+			}
+			if ae.Code != tc.code {
+				t.Fatalf("code = %q, want %q", ae.Code, tc.code)
+			}
+		})
+	}
+}
+
+// renderWorkerEnv points render at this test binary as the melt worker: t.Setenv
+// marks it a helper process running only TestHelperProcess in the given
+// WORKER_MODE. The worker inherits these vars (Invoke leaves the child env alone
+// unless Worker.Env is set), and the request carries the path + args.
+func renderWorkerEnv(t *testing.T, mode string) (path string, args []string) {
+	t.Helper()
+	t.Setenv("GO_WANT_HELPER_PROCESS", "1")
+	t.Setenv("WORKER_MODE", mode)
+	return os.Args[0], []string{"-test.run=TestHelperProcess"}
+}
+
+// renderFixture inits a project and builds a one-clip timeline into it, returning
+// the project dir — the setup every render test starts from (render needs a built
+// timeline to hash and render).
+func renderFixture(t *testing.T) string {
+	t.Helper()
+	dir := filepath.Join(t.TempDir(), "proj")
+	runJSON(t, []string{"init"}, map[string]any{"project": dir}, nil)
+	runJSON(t, []string{"timeline"}, map[string]any{
+		"project": dir,
+		"clips":   []map[string]any{{"resource": "raw.mp4"}},
+	}, nil)
+	return dir
+}
+
+// renderReply is the JSON handle render returns.
+type renderReply struct {
+	Output   string `json:"output"`
+	Timeline string `json:"timeline"`
+	Source   string `json:"source"`
+	Quality  string `json:"quality"`
+	Cached   bool   `json:"cached"`
+	Planned  bool   `json:"planned"`
+}
+
+// TestRenderProducesOutput is acceptance #1: `cutvec render <project> --json`
+// returns an output handle that resolves to a video the worker really wrote. The
+// project is given as a positional argument (the AC form) and no quality flag is
+// passed, so it defaults to the proxy tier.
+func TestRenderProducesOutput(t *testing.T) {
+	dir := renderFixture(t)
+	wpath, wargs := renderWorkerEnv(t, "render")
+
+	var res renderReply
+	req := map[string]any{"worker": wpath, "workerArgs": wargs}
+	b, _ := json.Marshal(req)
+	var out bytes.Buffer
+	if err := run([]string{"render", dir, "--json"}, bytes.NewReader(b), &out); err != nil {
+		t.Fatalf("render = %v, want nil", err)
+	}
+	if err := json.Unmarshal(out.Bytes(), &res); err != nil {
+		t.Fatalf("result is not JSON: %v\n%s", err, out.String())
+	}
+	if res.Cached {
+		t.Fatal("first render cached = true, want false (cache miss)")
+	}
+	if res.Output == "" || res.Source == "" {
+		t.Fatalf("result = %+v, want an output handle and source hash", res)
+	}
+	if res.Quality != "proxy" {
+		t.Fatalf("quality = %q, want proxy (the default)", res.Quality)
+	}
+	// The handle points at a real file the worker wrote — proving the request
+	// reached the worker and back.
+	if _, err := os.ReadFile(res.Output); err != nil {
+		t.Fatalf("output handle %q was not written: %v", res.Output, err)
+	}
+}
+
+// TestRenderProxyAndFinalQuality is acceptance #2: render supports both the
+// --proxy and --final quality tiers, each producing its own distinct output so
+// the two renders never clobber each other.
+func TestRenderProxyAndFinalQuality(t *testing.T) {
+	dir := renderFixture(t)
+	wpath, wargs := renderWorkerEnv(t, "render")
+	workerReq := map[string]any{"worker": wpath, "workerArgs": wargs}
+
+	var proxy renderReply
+	runJSON(t, []string{"render", dir, "--proxy"}, workerReq, &proxy)
+	if proxy.Quality != "proxy" || proxy.Cached {
+		t.Fatalf("proxy render = %+v, want quality proxy cached false", proxy)
+	}
+
+	var final renderReply
+	runJSON(t, []string{"render", dir, "--final"}, workerReq, &final)
+	if final.Quality != "final" || final.Cached {
+		t.Fatalf("final render = %+v, want quality final cached false", final)
+	}
+
+	if proxy.Output == final.Output {
+		t.Fatalf("proxy and final share an output path %q, want distinct handles", proxy.Output)
+	}
+	for _, r := range []renderReply{proxy, final} {
+		if _, err := os.Stat(r.Output); err != nil {
+			t.Fatalf("%s output %q not written: %v", r.Quality, r.Output, err)
+		}
+	}
+}
+
+// TestRenderCacheHitIdempotent asserts the render is cached and idempotent: the
+// second run is a content-hash cache hit that returns cached=true and runs NO
+// worker — proven by pointing it at a non-existent worker, which would fail with
+// worker.missing if the cache were bypassed.
+func TestRenderCacheHitIdempotent(t *testing.T) {
+	dir := renderFixture(t)
+	wpath, wargs := renderWorkerEnv(t, "render")
+
+	var first renderReply
+	runJSON(t, []string{"render", dir}, map[string]any{"worker": wpath, "workerArgs": wargs}, &first)
+	if first.Cached {
+		t.Fatal("first render cached = true, want false")
+	}
+
+	// Second run with a worker that cannot start: a cache hit never touches it.
+	var second renderReply
+	runJSON(t, []string{"render", dir}, map[string]any{"worker": "/nonexistent/melt-worker"}, &second)
+	if !second.Cached {
+		t.Fatal("second render cached = false, want true (cache hit on unchanged timeline)")
+	}
+	if second.Output != first.Output || second.Source != first.Source {
+		t.Fatalf("cache hit changed the handle: first %+v second %+v", first, second)
+	}
+}
+
+// TestRenderPlanWritesNothing asserts --plan reports the output handle and cache
+// status without running the worker or writing a video.
+func TestRenderPlanWritesNothing(t *testing.T) {
+	dir := renderFixture(t)
+
+	var res renderReply
+	// No worker configured: --plan must still succeed since it runs none.
+	runJSON(t, []string{"render", dir, "--plan"}, map[string]any{}, &res)
+	if !res.Planned || res.Cached {
+		t.Fatalf("plan result = %+v, want planned:true cached:false", res)
+	}
+	if res.Output == "" {
+		t.Fatal("plan result has no output handle")
+	}
+	if _, err := os.Stat(res.Output); !os.IsNotExist(err) {
+		t.Fatalf("--plan wrote the output (stat err = %v), want it absent", err)
+	}
+}
+
+// TestRenderWorkerErrorMapsThrough asserts a worker that cannot start surfaces as
+// its axerror code, not masked as a generic failure.
+func TestRenderWorkerErrorMapsThrough(t *testing.T) {
+	dir := renderFixture(t)
+	err := run([]string{"render", dir},
+		strings.NewReader(`{"worker":"/nonexistent/melt-worker"}`), io.Discard)
+	var ae *axerror.Error
+	if !errors.As(err, &ae) {
+		t.Fatalf("err = %v, want *axerror.Error", err)
+	}
+	if ae.Code != "worker.missing" {
+		t.Fatalf("code = %q, want worker.missing", ae.Code)
+	}
+}
+
+// TestRenderStatusArtifacts asserts the state graph reports per-quality render
+// artifacts, flipping from pending to done once a tier is rendered.
+func TestRenderStatusArtifacts(t *testing.T) {
+	dir := renderFixture(t)
+
+	var graph struct {
+		Artifacts []struct {
+			Name   string `json:"name"`
+			Status string `json:"status"`
+		} `json:"artifacts"`
+	}
+	runJSON(t, []string{"status", "--json"}, map[string]any{"project": dir}, &graph)
+	if a := findArtifact(graph.Artifacts, "render:proxy"); a == nil || a.Status != "pending" {
+		t.Fatalf("render:proxy = %+v, want status pending before it is rendered", a)
+	}
+
+	wpath, wargs := renderWorkerEnv(t, "render")
+	runJSON(t, []string{"render", dir, "--proxy"}, map[string]any{"worker": wpath, "workerArgs": wargs}, nil)
+
+	graph.Artifacts = nil
+	runJSON(t, []string{"status", "--json"}, map[string]any{"project": dir}, &graph)
+	if a := findArtifact(graph.Artifacts, "render:proxy"); a == nil || a.Status != "done" {
+		t.Fatalf("render:proxy = %+v, want status done after it is rendered", a)
+	}
+}
+
+// TestRenderFailureRules pins the written behaviour for empty, malformed, and
+// out-of-order input: each maps to a stable, machine-branchable axerror code.
+func TestRenderFailureRules(t *testing.T) {
+	initialized := filepath.Join(t.TempDir(), "proj")
+	if err := run([]string{"init"}, strings.NewReader(`{"project":"`+initialized+`"}`), io.Discard); err != nil {
+		t.Fatal(err)
+	}
+	built := renderFixture(t)
+
+	cases := []struct {
+		name  string
+		args  []string
+		stdin string
+		code  string
+	}{
+		{name: "no project", args: []string{"render"}, stdin: "", code: "input.invalid"},
+		{name: "two positional projects", args: []string{"render", "a", "b"}, stdin: "", code: "input.invalid"},
+		{name: "unknown flag", args: []string{"render", "--bogus"}, stdin: "", code: "cli.unknown_flag"},
+		{name: "both quality flags", args: []string{"render", built, "--proxy", "--final"}, stdin: "", code: "input.invalid"},
+		{name: "unknown quality", args: []string{"render", built}, stdin: `{"quality":"ultra"}`, code: "input.invalid"},
+		{name: "uninitialized", args: []string{"render", filepath.Join(t.TempDir(), "none")}, stdin: "", code: "project.uninitialized"},
+		{name: "no timeline built", args: []string{"render", initialized}, stdin: "", code: "timeline.missing"},
+		{name: "malformed json", args: []string{"render", built}, stdin: `{not json`, code: "input.invalid"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
