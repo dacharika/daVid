@@ -17,3 +17,4 @@ State what cutvec is in one sentence matching the project Goal, then the exact c
 - [ ] The README states what cutvec is in one sentence matching the project Goal
 - [ ] A reader reaches a green `go test ./...` run from the README alone
 ## Log
+- 2026-08-06T07:27:58Z claimed by a-fixer-1w56em
