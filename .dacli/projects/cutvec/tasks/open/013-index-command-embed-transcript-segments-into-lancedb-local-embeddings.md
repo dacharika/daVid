@@ -14,3 +14,4 @@ search retrieves moments semantically instead of scanning the transcript
 - [ ] cutvec index <project> builds a local LanceDB index of transcript segments
 - [ ] no network / API key required
 ## Log
+- 2026-08-06T01:45:01Z claimed by a-fixer-dd5gc1
