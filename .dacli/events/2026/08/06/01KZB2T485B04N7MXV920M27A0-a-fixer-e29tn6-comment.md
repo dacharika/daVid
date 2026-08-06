@@ -6,6 +6,6 @@ created: 2026-08-06T08:25:05Z
 created_by: a-fixer-e29tn6
 about: "[[t-01KZ9WMYSPMHARS5TGB7AH9H4A]]"
 origin: agent
-applied: false
+applied: true
 ---
 PR opened: https://github.com/mlnomadpy/cutvec/pull/11
