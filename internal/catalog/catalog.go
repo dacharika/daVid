@@ -220,6 +220,31 @@ func Default() Catalog {
 					},
 				},
 			},
+			{
+				Name:    "render",
+				Summary: "Render a project's MLT timeline to an output video via the melt worker at a proxy or final quality (cached, idempotent).",
+				InputSchema: Schema{
+					"type":     "object",
+					"required": []any{"project"},
+					"properties": map[string]any{
+						"project":    map[string]any{"type": "string", "description": "the project directory whose timeline to render (also accepted as a positional argument)"},
+						"quality":    map[string]any{"type": "string", "enum": []any{"proxy", "final"}, "description": "render tier; proxy is a fast draft, final is full quality. Overridden by --proxy/--final; defaults to proxy"},
+						"worker":     map[string]any{"type": "string", "description": "path to the melt render worker executable; defaults to the CUTVEC_MELT_WORKER env var"},
+						"workerArgs": map[string]any{"type": "array", "description": "fixed leading arguments passed to the worker", "items": map[string]any{"type": "string"}},
+					},
+				},
+				OutputSchema: Schema{
+					"type": "object",
+					"properties": map[string]any{
+						"output":   map[string]any{"type": "string", "description": "handle: path to the rendered video"},
+						"timeline": map[string]any{"type": "string", "description": "handle: path to the MLT timeline that was rendered"},
+						"source":   map[string]any{"type": "string", "description": "content hash of the rendered timeline"},
+						"quality":  map[string]any{"type": "string", "description": "the quality tier the output was rendered at"},
+						"cached":   map[string]any{"type": "boolean", "description": "true on a content-hash cache hit (the render already existed, no worker ran)"},
+						"planned":  map[string]any{"type": "boolean", "description": "true when --plan was set and nothing was written"},
+					},
+				},
+			},
 		},
 	}
 }
