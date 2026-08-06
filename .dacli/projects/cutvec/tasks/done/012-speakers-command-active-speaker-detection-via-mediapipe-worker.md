@@ -11,6 +11,10 @@ estimate: "{optimistic: 5, probable: 8, pessimistic: 13}"
 ## So that
 the editor knows who is speaking when, for reframing and speaker-locked shorts
 ## Acceptance
-- [ ] cutvec speakers <project> --json returns per-time speaker labels / turns
-- [ ] handles a fixed two-person layout
+- [x] cutvec speakers <project> --json returns per-time speaker labels / turns
+- [x] handles a fixed two-person layout
 ## Log
+- 2026-08-06T00:17:16Z claimed by a-fixer-wqc9fw
+- 2026-08-06T01:29:39Z accepted by a-root
+- 2026-08-06T01:29:39Z verified by `go build ./... && go test ./...` (exit 0)
+- 2026-08-06T01:29:39Z completed by a-root
