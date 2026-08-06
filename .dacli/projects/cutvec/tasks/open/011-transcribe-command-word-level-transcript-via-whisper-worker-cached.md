@@ -14,3 +14,4 @@ an agent gets timecoded words to search and to build captions
 - [ ] cutvec transcribe <project> --json returns a handle; transcript has word-level start/end
 - [ ] result is cached and idempotent
 ## Log
+- 2026-08-05T23:41:02Z claimed by a-fixer-sv7wx8

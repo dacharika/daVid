@@ -11,9 +11,12 @@ estimate: "{optimistic: 3, probable: 5, pessimistic: 8}"
 ## So that
 an agent can discover every command and its typed IO, and the same catalog backs the MCP server
 ## Acceptance
-- [ ] cutvec describe --json returns an array of tools each with name, summary, input schema, output schema
-- [ ] cutvec schema <cmd> returns the JSON Schema for that command
-- [ ] go test ./internal/catalog passes
+- [x] cutvec describe --json returns an array of tools each with name, summary, input schema, output schema
+- [x] cutvec schema <cmd> returns the JSON Schema for that command
+- [x] go test ./internal/catalog passes
 ## Log
 - 2026-08-05T21:37:09Z claimed by a-fixer-x4yg3c
 - 2026-08-05T23:09:06Z a-fixer-x4yg3c: PR opened: https://github.com/mlnomadpy/cutvec/pull/3 (event 01KZ9YAP5KRPXSW7717WZ3JEA8)
+- 2026-08-05T23:27:49Z accepted by a-root
+- 2026-08-05T23:27:49Z verified by `go build ./... && go test ./...` (exit 0)
+- 2026-08-05T23:27:49Z completed by a-root

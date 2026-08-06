@@ -14,3 +14,4 @@ downstream steps run on a fast proxy and clean audio, cached by content hash
 - [ ] cutvec ingest <video> --json returns handles for proxy and audio plus probe metadata
 - [ ] artifacts are cached and re-ingest is a no-op hit
 ## Log
+- 2026-08-05T23:41:01Z claimed by a-fixer-andad9
