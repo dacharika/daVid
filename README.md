@@ -82,6 +82,33 @@ running the worker. Failure rules: a project with no ingested sources returns
 returns `worker.missing`; a worker that never started, crashes, or speaks the
 wrong contract version maps to `worker.missing`/`worker.crashed`/`worker.version`.
 
+## Search: semantic query to ranked timecodes
+
+`search` answers a natural-language query with **ranked, timecoded candidates** —
+each `{start, end, text, score}`, most-relevant first — so an agent can ask for a
+moment by meaning and get back where it is. It searches the source's vector index
+(built by `index`, so a source must be indexed first, else `index.missing`),
+running a local search worker (`"worker"` in the request or the
+`CUTVEC_SEARCH_WORKER` env var) that embeds the query and returns scored hits. The
+core then re-ranks those hits into a **deterministic** total order — descending
+score, then `start`/`end`/`text` as stable tiebreaks — so a fixed query+index
+always yields the identical ranking, whatever order the worker reported them in:
+
+```sh
+./build/cutvec search proj "the funniest moment" --json < /dev/null
+# → {"query":"the funniest moment","source":"<hash>","results":[
+#      {"start":132.0,"end":137.5,"text":"…","score":0.88},
+#      {"start":54.2,"end":58.0,"text":"…","score":0.71}],"count":2,"model":"…"}
+```
+
+The project and query may be positional arguments (`search proj "<query>"`) or
+`"project"`/`"query"` in a JSON request; `"source"` (a path, id, or hash) selects
+which indexed source when the project has more than one, and `"limit"` caps how
+many ranked candidates come back. Unlike the build steps, search caches nothing —
+it is a read run on demand. `--plan` echoes the query and source without running
+the worker. Failure rules: an empty query returns `input.empty`; an un-indexed
+source returns `index.missing`; no configured worker returns `worker.missing`.
+
 ## First feature slice: build a timeline
 
 The `timeline` tool is the first edit operation carried end to end. It reads a

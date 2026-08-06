@@ -214,6 +214,45 @@ func Default() Catalog {
 				},
 			},
 			{
+				Name:    "search",
+				Summary: "Semantic search over a source's index: return ranked timecoded {start,end,text,score} candidates for a query (deterministic).",
+				InputSchema: Schema{
+					"type":     "object",
+					"required": []any{"project", "query"},
+					"properties": map[string]any{
+						"project":    map[string]any{"type": "string", "description": "the project directory to search (also accepted as the first positional argument)"},
+						"query":      map[string]any{"type": "string", "description": "the natural-language query (also accepted as the second positional argument)"},
+						"source":     map[string]any{"type": "string", "description": "path, id, or hash of the indexed source to search; optional when the project has exactly one source"},
+						"limit":      map[string]any{"type": "integer", "description": "cap on the number of ranked candidates returned; 0 or omitted returns all"},
+						"worker":     map[string]any{"type": "string", "description": "path to the local search worker executable; defaults to the CUTVEC_SEARCH_WORKER env var"},
+						"workerArgs": map[string]any{"type": "array", "description": "fixed leading arguments passed to the worker", "items": map[string]any{"type": "string"}},
+					},
+				},
+				OutputSchema: Schema{
+					"type": "object",
+					"properties": map[string]any{
+						"query":  map[string]any{"type": "string", "description": "the query that was searched for"},
+						"source": map[string]any{"type": "string", "description": "content hash of the searched source"},
+						"results": map[string]any{
+							"type":        "array",
+							"description": "ranked timecoded candidates, most-relevant first",
+							"items": map[string]any{
+								"type": "object",
+								"properties": map[string]any{
+									"start": map[string]any{"type": "number", "description": "candidate start offset in seconds"},
+									"end":   map[string]any{"type": "number", "description": "candidate end offset in seconds"},
+									"text":  map[string]any{"type": "string", "description": "the matched transcript span"},
+									"score": map[string]any{"type": "number", "description": "relevance score; results are sorted by it, descending"},
+								},
+							},
+						},
+						"count":   map[string]any{"type": "integer", "description": "number of candidates returned"},
+						"model":   map[string]any{"type": "string", "description": "local embedding model used, when the worker reports one"},
+						"planned": map[string]any{"type": "boolean", "description": "true when --plan was set and no worker ran"},
+					},
+				},
+			},
+			{
 				Name:    "speakers",
 				Summary: "Detect the active speaker over time for an ingested source via the mediapipe worker, against a fixed two-person layout (cached, idempotent).",
 				InputSchema: Schema{

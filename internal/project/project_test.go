@@ -248,3 +248,52 @@ func TestIndexCacheRoundTrip(t *testing.T) {
 		t.Fatalf("index table = %q, want %q", got.Table, p.IndexTablePath(hash))
 	}
 }
+
+// TestRankCandidatesDeterministicOrder is the unit-level proof of search's
+// determinism guarantee: RankCandidates imposes a total order (score desc, then
+// start, end, text) so the same candidates always rank identically no matter
+// what order they arrived in, and the input slice is left untouched.
+func TestRankCandidatesDeterministicOrder(t *testing.T) {
+	in := []Candidate{
+		{Start: 5.0, End: 6.0, Text: "low", Score: 0.10},
+		{Start: 2.0, End: 3.0, Text: "beta", Score: 0.50}, // ties on score with the next two
+		{Start: 1.0, End: 2.0, Text: "alpha", Score: 0.50},
+		{Start: 2.0, End: 3.0, Text: "aardvark", Score: 0.50}, // same start as beta, earlier text
+		{Start: 0.0, End: 1.0, Text: "top", Score: 0.90},
+	}
+	// A defensive copy to prove RankCandidates does not mutate its input.
+	orig := make([]Candidate, len(in))
+	copy(orig, in)
+
+	got := RankCandidates(in)
+
+	want := []string{"top", "alpha", "aardvark", "beta", "low"}
+	if len(got) != len(want) {
+		t.Fatalf("ranked %d candidates, want %d", len(got), len(want))
+	}
+	for i, w := range want {
+		if got[i].Text != w {
+			t.Fatalf("rank[%d] = %q, want %q (full order: %+v)", i, got[i].Text, w, got)
+		}
+	}
+	// Score must be non-increasing across the ranking.
+	for i := 1; i < len(got); i++ {
+		if got[i-1].Score < got[i].Score {
+			t.Fatalf("ranking not sorted by descending score at %d: %+v", i, got)
+		}
+	}
+	// The input slice is untouched.
+	for i := range orig {
+		if in[i] != orig[i] {
+			t.Fatalf("RankCandidates mutated its input at %d: got %+v want %+v", i, in[i], orig[i])
+		}
+	}
+
+	// Determinism: ranking the same input twice yields the identical order.
+	again := RankCandidates(orig)
+	for i := range got {
+		if got[i] != again[i] {
+			t.Fatalf("RankCandidates not deterministic at %d: %+v vs %+v", i, got[i], again[i])
+		}
+	}
+}
