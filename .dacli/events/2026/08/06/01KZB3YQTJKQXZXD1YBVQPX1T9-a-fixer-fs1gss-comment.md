@@ -6,6 +6,6 @@ created: 2026-08-06T08:45:05Z
 created_by: a-fixer-fs1gss
 about: "[[t-01KZ9WMYTERKPZHFHV79QMQS37]]"
 origin: agent
-applied: false
+applied: true
 ---
 PR opened: https://github.com/mlnomadpy/cutvec/pull/12
