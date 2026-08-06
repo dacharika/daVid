@@ -383,6 +383,42 @@ func (p Project) ReadIndex(hash string) (Index, error) {
 	return idx, nil
 }
 
+// Candidate is one ranked search hit: a timecoded transcript span (Start/End in
+// seconds) with the matched Text and a relevance Score. Search returns these
+// ranked most-relevant first. Unlike a transcript or index it is not cached — it
+// is a query result computed on demand over the (cached) index.
+type Candidate struct {
+	Start float64 `json:"start"`
+	End   float64 `json:"end"`
+	Text  string  `json:"text"`
+	Score float64 `json:"score"`
+}
+
+// RankCandidates returns candidates in the deterministic ranked order search
+// emits: descending Score first, then ascending Start, End, and Text as stable
+// tiebreaks. This total order means a fixed query+index always yields the
+// identical ranking no matter what order the worker reported hits in — the
+// determinism the search acceptance criterion requires. The input is not
+// mutated; a sorted copy is returned.
+func RankCandidates(cands []Candidate) []Candidate {
+	ranked := make([]Candidate, len(cands))
+	copy(ranked, cands)
+	sort.SliceStable(ranked, func(i, j int) bool {
+		a, b := ranked[i], ranked[j]
+		switch {
+		case a.Score != b.Score:
+			return a.Score > b.Score
+		case a.Start != b.Start:
+			return a.Start < b.Start
+		case a.End != b.End:
+			return a.End < b.End
+		default:
+			return a.Text < b.Text
+		}
+	})
+	return ranked
+}
+
 // TwoPersonLayout is the fixed speaker layout the speakers step analyses against:
 // two people in a stable side-by-side frame. It is a constant, not a request
 // parameter — so the speakers cache key stays the bare source content hash with

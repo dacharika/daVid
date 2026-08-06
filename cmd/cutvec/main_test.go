@@ -61,6 +61,24 @@ func TestHelperProcess(t *testing.T) {
 		out, _ := json.Marshal(resp)
 		os.Stdout.Write(out)
 		os.Exit(0)
+	case "search":
+		// A local search worker: embed the query and return scored hits. The
+		// candidates are returned deliberately out of ranked order (lower score
+		// first) so the test can prove the core re-ranks them into a
+		// deterministic descending-score order.
+		resp := worker.Response{
+			Version: worker.ContractVersion,
+			Result: map[string]any{
+				"model": "fake-local-embed",
+				"candidates": []map[string]any{
+					{"start": 1.5, "end": 3.0, "text": "world", "score": 0.2},
+					{"start": 0.0, "end": 1.5, "text": "hello", "score": 0.9},
+				},
+			},
+		}
+		out, _ := json.Marshal(resp)
+		os.Stdout.Write(out)
+		os.Exit(0)
 	case "speakers":
 		// Echo the layout the core sent so the test can prove the fixed layout
 		// travels to the worker, and return two per-time turns.
@@ -1352,6 +1370,198 @@ func TestIndexFailureRules(t *testing.T) {
 		{name: "uninitialized", args: []string{"index", filepath.Join(t.TempDir(), "none")}, stdin: "", code: "project.uninitialized"},
 		{name: "no sources", args: []string{"index", empty}, stdin: "", code: "input.empty"},
 		{name: "malformed json", args: []string{"index", initialized}, stdin: `{not json`, code: "input.invalid"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := run(tc.args, strings.NewReader(tc.stdin), io.Discard)
+			var ae *axerror.Error
+			if !errors.As(err, &ae) {
+				t.Fatalf("err = %v, want *axerror.Error", err)
+			}
+			if ae.Code != tc.code {
+				t.Fatalf("code = %q, want %q", ae.Code, tc.code)
+			}
+		})
+	}
+}
+
+// searchReply is the JSON shape search returns: the query echoed back, the
+// searched source, and the ranked timecoded candidates.
+type searchReply struct {
+	Query   string `json:"query"`
+	Source  string `json:"source"`
+	Results []struct {
+		Start float64 `json:"start"`
+		End   float64 `json:"end"`
+		Text  string  `json:"text"`
+		Score float64 `json:"score"`
+	} `json:"results"`
+	Count   int    `json:"count"`
+	Model   string `json:"model"`
+	Planned bool   `json:"planned"`
+}
+
+// indexedFixture ingests, transcribes, and indexes contents, leaving a project
+// whose sole source has a LanceDB index ready to search.
+func indexedFixture(t *testing.T, contents string) (dir, src string) {
+	t.Helper()
+	dir, src = transcribedFixture(t, contents)
+	wpath, wargs := indexWorkerEnv(t, "index")
+	runJSON(t, []string{"index", dir}, map[string]any{"worker": wpath, "workerArgs": wargs}, nil)
+	return dir, src
+}
+
+// TestSearchRanksTimecodedCandidates is acceptance #1: `cutvec search <project>
+// "<query>" --json` returns ranked {start,end,text,score} candidates. The fake
+// worker deliberately returns hits out of score order, so a correct pass proves
+// the core re-ranks them descending by score.
+func TestSearchRanksTimecodedCandidates(t *testing.T) {
+	dir, _ := indexedFixture(t, "fake audio bytes")
+	wpath, wargs := indexWorkerEnv(t, "search")
+
+	var res searchReply
+	runJSON(t, []string{"search", dir, "hello", "--json"},
+		map[string]any{"worker": wpath, "workerArgs": wargs}, &res)
+
+	if res.Query != "hello" {
+		t.Fatalf("query = %q, want hello", res.Query)
+	}
+	if res.Source == "" {
+		t.Fatal("source is empty, want the searched source's content hash")
+	}
+	if res.Count != 2 || len(res.Results) != 2 {
+		t.Fatalf("results = %+v, want 2 candidates", res.Results)
+	}
+	if res.Model != "fake-local-embed" {
+		t.Fatalf("model = %q, want fake-local-embed", res.Model)
+	}
+	// Ranked most-relevant first: the 0.9-score "hello" hit outranks the
+	// 0.2-score "world" hit even though the worker listed them the other way.
+	top := res.Results[0]
+	if top.Text != "hello" || top.Score != 0.9 || top.Start != 0.0 || top.End != 1.5 {
+		t.Fatalf("top candidate = %+v, want {0 1.5 hello 0.9}", top)
+	}
+	second := res.Results[1]
+	if second.Text != "world" || second.Score != 0.2 {
+		t.Fatalf("second candidate = %+v, want text=world score=0.2", second)
+	}
+	// The ranking must be non-increasing by score.
+	if res.Results[0].Score < res.Results[1].Score {
+		t.Fatalf("results not sorted by descending score: %+v", res.Results)
+	}
+}
+
+// TestSearchDeterministic is acceptance #2: a fixed query+index yields the
+// identical ranked output on every run — proven by comparing the full JSON bytes
+// of two independent searches.
+func TestSearchDeterministic(t *testing.T) {
+	dir, _ := indexedFixture(t, "fake audio bytes")
+	wpath, wargs := indexWorkerEnv(t, "search")
+	req := map[string]any{"worker": wpath, "workerArgs": wargs}
+
+	var first, second bytes.Buffer
+	b, _ := json.Marshal(req)
+	if err := run([]string{"search", dir, "hello", "--json"}, bytes.NewReader(b), &first); err != nil {
+		t.Fatalf("first search = %v", err)
+	}
+	if err := run([]string{"search", dir, "hello", "--json"}, bytes.NewReader(b), &second); err != nil {
+		t.Fatalf("second search = %v", err)
+	}
+	if first.String() != second.String() {
+		t.Fatalf("search not deterministic:\nfirst:  %s\nsecond: %s", first.String(), second.String())
+	}
+}
+
+// TestSearchLimitCaps asserts the limit field caps the number of ranked
+// candidates, keeping the highest-scoring ones.
+func TestSearchLimitCaps(t *testing.T) {
+	dir, _ := indexedFixture(t, "fake audio bytes")
+	wpath, wargs := indexWorkerEnv(t, "search")
+
+	var res searchReply
+	runJSON(t, []string{"search", dir, "hello"},
+		map[string]any{"worker": wpath, "workerArgs": wargs, "limit": 1}, &res)
+	if res.Count != 1 || len(res.Results) != 1 {
+		t.Fatalf("limit=1 returned %d candidates, want 1", res.Count)
+	}
+	if res.Results[0].Text != "hello" {
+		t.Fatalf("limit kept %q, want the top-scoring hello", res.Results[0].Text)
+	}
+}
+
+// TestSearchRequiresIndex asserts search refuses a source that has not been
+// indexed: the query runs against the vector index, so a missing index is a
+// stable, branchable precondition error.
+func TestSearchRequiresIndex(t *testing.T) {
+	dir, _ := transcribedFixture(t, "fake audio bytes") // transcribed but not indexed
+	err := run([]string{"search", dir, "hello"}, strings.NewReader(`{}`), io.Discard)
+	var ae *axerror.Error
+	if !errors.As(err, &ae) {
+		t.Fatalf("err = %v, want *axerror.Error", err)
+	}
+	if ae.Code != "index.missing" {
+		t.Fatalf("code = %q, want index.missing", ae.Code)
+	}
+}
+
+// TestSearchPlanRunsNoWorker asserts --plan reports the query and source without
+// running a worker (it succeeds even with none configured) and returns no hits.
+func TestSearchPlanRunsNoWorker(t *testing.T) {
+	dir, _ := indexedFixture(t, "fake audio bytes")
+
+	var res searchReply
+	runJSON(t, []string{"search", dir, "hello", "--plan"}, map[string]any{}, &res)
+	if !res.Planned {
+		t.Fatalf("plan result = %+v, want planned:true", res)
+	}
+	if res.Query != "hello" || res.Source == "" {
+		t.Fatalf("plan result = %+v, want query=hello and a non-empty source", res)
+	}
+	if len(res.Results) != 0 {
+		t.Fatalf("plan returned %d results, want none", len(res.Results))
+	}
+}
+
+// TestSearchWorkerErrorMapsThrough asserts a worker that cannot start surfaces as
+// its axerror code, not masked as a generic failure.
+func TestSearchWorkerErrorMapsThrough(t *testing.T) {
+	dir, _ := indexedFixture(t, "fake audio bytes")
+	err := run([]string{"search", dir, "hello"},
+		strings.NewReader(`{"worker":"/nonexistent/search-worker"}`), io.Discard)
+	var ae *axerror.Error
+	if !errors.As(err, &ae) {
+		t.Fatalf("err = %v, want *axerror.Error", err)
+	}
+	if ae.Code != "worker.missing" {
+		t.Fatalf("code = %q, want worker.missing", ae.Code)
+	}
+}
+
+// TestSearchFailureRules pins the written behaviour for missing and malformed
+// input: each maps to a stable, machine-branchable axerror code.
+func TestSearchFailureRules(t *testing.T) {
+	initialized := filepath.Join(t.TempDir(), "proj")
+	if err := run([]string{"init"}, strings.NewReader(`{"project":"`+initialized+`"}`), io.Discard); err != nil {
+		t.Fatal(err)
+	}
+	empty := filepath.Join(t.TempDir(), "empty")
+	if err := run([]string{"init"}, strings.NewReader(`{"project":"`+empty+`"}`), io.Discard); err != nil {
+		t.Fatal(err)
+	}
+
+	cases := []struct {
+		name  string
+		args  []string
+		stdin string
+		code  string
+	}{
+		{name: "no project", args: []string{"search"}, stdin: "", code: "input.invalid"},
+		{name: "three positionals", args: []string{"search", "a", "b", "c"}, stdin: "", code: "input.invalid"},
+		{name: "unknown flag", args: []string{"search", "--bogus"}, stdin: "", code: "cli.unknown_flag"},
+		{name: "empty query", args: []string{"search", initialized}, stdin: "", code: "input.empty"},
+		{name: "uninitialized", args: []string{"search", filepath.Join(t.TempDir(), "none"), "q"}, stdin: "", code: "project.uninitialized"},
+		{name: "no sources", args: []string{"search", empty, "q"}, stdin: "", code: "input.empty"},
+		{name: "malformed json", args: []string{"search", initialized, "q"}, stdin: `{not json`, code: "input.invalid"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
