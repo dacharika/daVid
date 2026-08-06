@@ -48,6 +48,8 @@ func run(args []string, stdin io.Reader, stdout io.Writer) error {
 		return statusCmd(args[1:], stdin, stdout)
 	case "transcribe":
 		return transcribeCmd(args[1:], stdin, stdout)
+	case "speakers":
+		return speakersCmd(args[1:], stdin, stdout)
 	case "timeline":
 		return timelineCmd(args[1:], stdin, stdout)
 	case "mcp":
@@ -544,6 +546,183 @@ func transcriptFromResult(result map[string]any) (project.Transcript, error) {
 			WithHint(`the transcribe worker must return {"words":[{"word","start","end"}],...}`)
 	}
 	return t, nil
+}
+
+// speakersRequest is the JSON document for the `speakers` tool. Project is
+// required (and may instead be given as a positional argument). Source names the
+// ingested source to analyse — its path, id, or hash — and may be omitted when the
+// project holds exactly one source. Worker/WorkerArgs locate the mediapipe worker
+// executable; when Worker is empty the CUTVEC_MEDIAPIPE_WORKER env var is used.
+// The speaker layout is a fixed two-person constant, not a request field, so the
+// cache key stays the bare source hash with no layout collision.
+type speakersRequest struct {
+	Project    string   `json:"project"`
+	Source     string   `json:"source"`
+	Worker     string   `json:"worker"`
+	WorkerArgs []string `json:"workerArgs"`
+}
+
+// speakersResult is the handle returned by `speakers`: the path to the cached
+// active-speaker turns plus a small summary. Cached=true means the turns already
+// existed for these bytes, so no worker ran — the idempotent re-run.
+type speakersResult struct {
+	Speakers string `json:"speakers"`
+	Source   string `json:"source"`
+	Layout   string `json:"layout"`
+	Turns    int    `json:"turns"`
+	Cached   bool   `json:"cached"`
+	Planned  bool   `json:"planned,omitempty"`
+}
+
+// speakersCmd produces a per-time active-speaker track for an ingested source and
+// caches it keyed by the source's content hash, so a re-run is a pure cache hit
+// that invokes no worker. Detection runs against a fixed two-person layout. The
+// turns themselves (speaker label with start/end times) live at the returned
+// handle; the JSON result carries the handle, not the turns blob. The project may
+// be given as a positional argument (`cutvec speakers <project>`) or in the JSON
+// request. --plan reports the handle and cache status without running the worker.
+func speakersCmd(args []string, stdin io.Reader, stdout io.Writer) error {
+	posProject, plan, err := parseSpeakersArgs(args)
+	if err != nil {
+		return err
+	}
+	var req speakersRequest
+	if err := decodeOptionalRequest(stdin, &req); err != nil {
+		return err
+	}
+	if posProject != "" {
+		req.Project = posProject
+	}
+	if req.Project == "" {
+		return axerror.New("input.invalid", "project directory is required").
+			WithHint(`pass it as an argument (cutvec speakers <project>) or set "project" in the JSON request`)
+	}
+
+	proj := project.Open(req.Project)
+	if !proj.Initialized() {
+		return axerror.New("project.uninitialized", "project is not initialised").
+			WithHint("run `cutvec init` on this directory first")
+	}
+	m, err := proj.Load()
+	if err != nil {
+		return axerror.New("project.read", "cannot read project state: "+err.Error()).AsRetryable()
+	}
+	src, err := resolveSource(m, req.Source)
+	if err != nil {
+		return err
+	}
+
+	// Cache hit: the speaker track for these bytes already exists. Return it
+	// untouched, running no worker — the defining idempotent re-run.
+	if proj.HasSpeakers(src.Hash) {
+		s, err := proj.ReadSpeakers(src.Hash)
+		if err != nil {
+			return axerror.New("project.read", "cannot read cached speakers: "+err.Error()).AsRetryable()
+		}
+		return emitJSON(stdout, speakersResult{
+			Speakers: proj.SpeakersPath(src.Hash),
+			Source:   src.Hash,
+			Layout:   s.Layout,
+			Turns:    len(s.Turns),
+			Cached:   true,
+		})
+	}
+
+	if plan {
+		return emitJSON(stdout, speakersResult{
+			Speakers: proj.SpeakersPath(src.Hash),
+			Source:   src.Hash,
+			Layout:   project.TwoPersonLayout,
+			Cached:   false,
+			Planned:  true,
+		})
+	}
+
+	w, err := resolveMediapipeWorker(req)
+	if err != nil {
+		return err
+	}
+	resp, err := w.Invoke(context.Background(), worker.Request{
+		Op:     "speakers",
+		Params: map[string]any{"source": src.Path, "layout": project.TwoPersonLayout},
+	})
+	if err != nil {
+		return err // already an *axerror.Error from the worker boundary
+	}
+	s, err := speakersFromResult(resp.Result)
+	if err != nil {
+		return err
+	}
+	s.Source = src.Hash
+	// The layout is fixed by the core, never taken from the worker, so the cache
+	// key (bare source hash) can never disagree with the recorded layout.
+	s.Layout = project.TwoPersonLayout
+	if err := proj.WriteSpeakers(src.Hash, s); err != nil {
+		return axerror.New("project.write", "cannot cache speakers: "+err.Error()).AsRetryable()
+	}
+	return emitJSON(stdout, speakersResult{
+		Speakers: proj.SpeakersPath(src.Hash),
+		Source:   src.Hash,
+		Layout:   s.Layout,
+		Turns:    len(s.Turns),
+		Cached:   false,
+	})
+}
+
+// parseSpeakersArgs reads speakers' flags (--plan dry-run, --json affirming the
+// output form) and at most one positional project argument off args.
+func parseSpeakersArgs(args []string) (proj string, plan bool, err error) {
+	for _, a := range args {
+		switch {
+		case a == "--plan":
+			plan = true
+		case a == "--json":
+			// JSON is the only output form; the flag affirms it.
+		case strings.HasPrefix(a, "-"):
+			return "", false, axerror.New("cli.unknown_flag", fmt.Sprintf("unknown flag %q", a)).
+				WithHint("the flags are --plan (dry-run) and --json")
+		default:
+			if proj != "" {
+				return "", false, axerror.New("input.invalid",
+					"speakers takes at most one project argument").
+					WithHint("name one project, e.g. `cutvec speakers ./proj`")
+			}
+			proj = a
+		}
+	}
+	return proj, plan, nil
+}
+
+// resolveMediapipeWorker builds the mediapipe Worker from the request, falling
+// back to the CUTVEC_MEDIAPIPE_WORKER env var for the executable path. With
+// neither set there is no worker to run, which is a non-retryable worker.missing.
+func resolveMediapipeWorker(req speakersRequest) (worker.Worker, error) {
+	path := req.Worker
+	if path == "" {
+		path = os.Getenv("CUTVEC_MEDIAPIPE_WORKER")
+	}
+	if path == "" {
+		return worker.Worker{}, axerror.New("worker.missing", "no mediapipe worker configured").
+			WithHint(`set "worker" in the request or the CUTVEC_MEDIAPIPE_WORKER env var to the mediapipe worker executable`)
+	}
+	return worker.Worker{Path: path, Args: req.WorkerArgs}, nil
+}
+
+// speakersFromResult lifts the worker's result map into a Speakers track. A result
+// that is not shaped like a speaker track is a protocol violation.
+func speakersFromResult(result map[string]any) (project.Speakers, error) {
+	b, err := json.Marshal(result)
+	if err != nil {
+		return project.Speakers{}, axerror.New("worker.protocol",
+			"cannot re-encode worker result: "+err.Error())
+	}
+	var s project.Speakers
+	if err := json.Unmarshal(b, &s); err != nil {
+		return project.Speakers{}, axerror.New("worker.protocol",
+			"worker result is not a speaker track: "+err.Error()).
+			WithHint(`the speakers worker must return {"turns":[{"speaker","start","end"}],...}`)
+	}
+	return s, nil
 }
 
 // parsePlan reads the shared --plan dry-run flag off args, rejecting any other
