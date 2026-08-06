@@ -316,6 +316,73 @@ func (p Project) ReadTranscript(hash string) (Transcript, error) {
 	return t, nil
 }
 
+// Index is the metadata of a LanceDB index built over one source's transcript
+// segments: the embedded segments live in a sibling .lance table, and this
+// record is the cached handle plus a small summary. It is content-addressed by
+// Source (the sha256 of the indexed media), so re-indexing identical bytes is a
+// cache hit that runs no worker.
+type Index struct {
+	// Source is the content hash of the media whose transcript was indexed.
+	Source string `json:"source"`
+	// Table is the path to the .lance table holding the embedded segments.
+	Table string `json:"table"`
+	// Segments is the number of transcript segments embedded into the table.
+	Segments int `json:"segments"`
+	// Dim is the dimensionality of each embedding vector.
+	Dim int `json:"dim"`
+	// Model is the local embedding model the worker used, when it reports one.
+	Model string `json:"model,omitempty"`
+}
+
+// indexKey namespaces an index cache entry so it never collides with the source
+// record or the transcript entry keyed on the same content hash.
+func indexKey(hash string) string { return "index-" + hash }
+
+// IndexPath is the handle an index step returns: the path to the cached index
+// metadata JSON for the source with the given content hash.
+func (p Project) IndexPath(hash string) string {
+	return p.cachePath(indexKey(hash))
+}
+
+// IndexTablePath is where the LanceDB table for the source's index lives — the
+// .lance sibling of the metadata JSON, written by the local embed worker.
+func (p Project) IndexTablePath(hash string) string {
+	return filepath.Join(p.CacheDir(), indexKey(hash)+".lance")
+}
+
+// HasIndex reports whether an index for the source has already been built —
+// i.e. whether index is a cache hit for these bytes.
+func (p Project) HasIndex(hash string) bool {
+	return p.CacheHit(indexKey(hash))
+}
+
+// WriteIndex stores the index metadata as the cache entry for its source hash,
+// creating the cache directory if needed. The .lance table itself is written by
+// the worker, not here.
+func (p Project) WriteIndex(hash string, idx Index) error {
+	if err := os.MkdirAll(p.CacheDir(), 0o755); err != nil {
+		return err
+	}
+	b, err := json.MarshalIndent(idx, "", "  ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(p.IndexPath(hash), append(b, '\n'), 0o644)
+}
+
+// ReadIndex reads the cached index metadata for the source hash.
+func (p Project) ReadIndex(hash string) (Index, error) {
+	b, err := os.ReadFile(p.IndexPath(hash))
+	if err != nil {
+		return Index{}, err
+	}
+	var idx Index
+	if err := json.Unmarshal(b, &idx); err != nil {
+		return Index{}, err
+	}
+	return idx, nil
+}
+
 // TwoPersonLayout is the fixed speaker layout the speakers step analyses against:
 // two people in a stable side-by-side frame. It is a constant, not a request
 // parameter — so the speakers cache key stays the bare source content hash with
@@ -460,10 +527,11 @@ func (p Project) Status() (StateGraph, error) {
 			p.artifact("render:proxy", p.RenderPath(hash, "proxy")),
 			p.artifact("render:final", p.RenderPath(hash, "final")))
 	}
-	// A transcript and a speaker track are per-source artifacts, each done once
-	// its cache entry exists.
+	// A transcript, an index, and a speaker track are per-source artifacts, each
+	// done once its cache entry exists.
 	for _, s := range m.Sources {
 		artifacts = append(artifacts, p.artifact("transcript:"+s.ID, p.TranscriptPath(s.Hash)))
+		artifacts = append(artifacts, p.artifact("index:"+s.ID, p.IndexPath(s.Hash)))
 		artifacts = append(artifacts, p.artifact("speakers:"+s.ID, p.SpeakersPath(s.Hash)))
 	}
 	return StateGraph{

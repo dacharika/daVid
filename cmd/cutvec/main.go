@@ -48,6 +48,8 @@ func run(args []string, stdin io.Reader, stdout io.Writer) error {
 		return statusCmd(args[1:], stdin, stdout)
 	case "transcribe":
 		return transcribeCmd(args[1:], stdin, stdout)
+	case "index":
+		return indexCmd(args[1:], stdin, stdout)
 	case "speakers":
 		return speakersCmd(args[1:], stdin, stdout)
 	case "timeline":
@@ -383,7 +385,7 @@ type transcribeResult struct {
 // <project>`) or in the JSON request. --plan reports the handle and cache status
 // without running the worker.
 func transcribeCmd(args []string, stdin io.Reader, stdout io.Writer) error {
-	posProject, plan, err := parseTranscribeArgs(args)
+	posProject, plan, err := parseProjectArgs(args, "transcribe")
 	if err != nil {
 		return err
 	}
@@ -408,7 +410,7 @@ func transcribeCmd(args []string, stdin io.Reader, stdout io.Writer) error {
 	if err != nil {
 		return axerror.New("project.read", "cannot read project state: "+err.Error()).AsRetryable()
 	}
-	src, err := resolveSource(m, req.Source)
+	src, err := resolveSource(m, req.Source, "transcribe")
 	if err != nil {
 		return err
 	}
@@ -466,9 +468,10 @@ func transcribeCmd(args []string, stdin io.Reader, stdout io.Writer) error {
 	})
 }
 
-// parseTranscribeArgs reads transcribe's flags (--plan dry-run, --json affirming
-// the output form) and at most one positional project argument off args.
-func parseTranscribeArgs(args []string) (proj string, plan bool, err error) {
+// parseProjectArgs reads the shared per-source flags (--plan dry-run, --json
+// affirming the output form) and at most one positional project argument off
+// args. cmd names the command in error messages (e.g. transcribe, index).
+func parseProjectArgs(args []string, cmd string) (proj string, plan bool, err error) {
 	for _, a := range args {
 		switch {
 		case a == "--plan":
@@ -481,8 +484,8 @@ func parseTranscribeArgs(args []string) (proj string, plan bool, err error) {
 		default:
 			if proj != "" {
 				return "", false, axerror.New("input.invalid",
-					"transcribe takes at most one project argument").
-					WithHint("name one project, e.g. `cutvec transcribe ./proj`")
+					cmd+" takes at most one project argument").
+					WithHint(fmt.Sprintf("name one project, e.g. `cutvec %s ./proj`", cmd))
 			}
 			proj = a
 		}
@@ -490,14 +493,14 @@ func parseTranscribeArgs(args []string) (proj string, plan bool, err error) {
 	return proj, plan, nil
 }
 
-// resolveSource picks the ingested source to transcribe. With no name it returns
-// the project's sole source, erroring when the project has none (nothing to
-// transcribe) or more than one (ambiguous). A name matches a source by its path,
-// id, or hash.
-func resolveSource(m project.Manifest, want string) (project.Source, error) {
+// resolveSource picks the ingested source a per-source step acts on. With no
+// name it returns the project's sole source, erroring when the project has none
+// (nothing to act on) or more than one (ambiguous). A name matches a source by
+// its path, id, or hash. verb names the action in error messages.
+func resolveSource(m project.Manifest, want, verb string) (project.Source, error) {
 	if len(m.Sources) == 0 {
 		return project.Source{}, axerror.New("input.empty",
-			"project has no ingested sources to transcribe").
+			"project has no ingested sources to "+verb).
 			WithHint("run `cutvec ingest` to add a source first")
 	}
 	if want == "" {
@@ -506,7 +509,7 @@ func resolveSource(m project.Manifest, want string) (project.Source, error) {
 		}
 		return project.Source{}, axerror.New("input.invalid",
 			fmt.Sprintf("project has %d sources; name one with \"source\"", len(m.Sources))).
-			WithHint("set \"source\" to the path, id, or hash of the source to transcribe")
+			WithHint("set \"source\" to the path, id, or hash of the source to " + verb)
 	}
 	for _, s := range m.Sources {
 		if s.Path == want || s.ID == want || s.Hash == want {
@@ -548,6 +551,185 @@ func transcriptFromResult(result map[string]any) (project.Transcript, error) {
 			WithHint(`the transcribe worker must return {"words":[{"word","start","end"}],...}`)
 	}
 	return t, nil
+}
+
+// indexRequest is the JSON document for the `index` tool. Project is required
+// (and may instead be given as a positional argument). Source names the ingested
+// source whose transcript to embed — its path, id, or hash — and may be omitted
+// when the project holds exactly one source. Worker/WorkerArgs locate the local
+// embedding worker executable; when Worker is empty the CUTVEC_INDEX_WORKER env
+// var is used.
+type indexRequest struct {
+	Project    string   `json:"project"`
+	Source     string   `json:"source"`
+	Worker     string   `json:"worker"`
+	WorkerArgs []string `json:"workerArgs"`
+}
+
+// indexResult is the handle returned by `index`: the path to the cached index
+// metadata plus the sibling LanceDB table and a small summary. Cached=true means
+// the index already existed for these bytes, so no worker ran — the idempotent
+// re-run.
+type indexResult struct {
+	Index    string `json:"index"`
+	Table    string `json:"table"`
+	Source   string `json:"source"`
+	Segments int    `json:"segments"`
+	Dim      int    `json:"dim"`
+	Model    string `json:"model,omitempty"`
+	Cached   bool   `json:"cached"`
+	Planned  bool   `json:"planned,omitempty"`
+}
+
+// indexCmd embeds an ingested source's transcript segments into a local LanceDB
+// index and caches it keyed by the source's content hash, so a re-run is a pure
+// cache hit that invokes no worker. The vectors live in a .lance table the embed
+// worker writes; the JSON result carries the handles (metadata + table), not the
+// vectors. No network or API key is involved — embeddings are produced locally by
+// the worker. The project may be given as a positional argument (`cutvec index
+// <project>`) or in the JSON request. --plan reports the handles and cache status
+// without running the worker.
+func indexCmd(args []string, stdin io.Reader, stdout io.Writer) error {
+	posProject, plan, err := parseProjectArgs(args, "index")
+	if err != nil {
+		return err
+	}
+	var req indexRequest
+	if err := decodeOptionalRequest(stdin, &req); err != nil {
+		return err
+	}
+	if posProject != "" {
+		req.Project = posProject
+	}
+	if req.Project == "" {
+		return axerror.New("input.invalid", "project directory is required").
+			WithHint(`pass it as an argument (cutvec index <project>) or set "project" in the JSON request`)
+	}
+
+	proj := project.Open(req.Project)
+	if !proj.Initialized() {
+		return axerror.New("project.uninitialized", "project is not initialised").
+			WithHint("run `cutvec init` on this directory first")
+	}
+	m, err := proj.Load()
+	if err != nil {
+		return axerror.New("project.read", "cannot read project state: "+err.Error()).AsRetryable()
+	}
+	src, err := resolveSource(m, req.Source, "index")
+	if err != nil {
+		return err
+	}
+
+	// The index is built over transcript segments, so the source must be
+	// transcribed first — a written precondition, like render's built timeline.
+	if !proj.HasTranscript(src.Hash) {
+		return axerror.New("transcript.missing", "source has no transcript to index").
+			WithHint("run `cutvec transcribe` on this source first")
+	}
+
+	// Cache hit: the index for these bytes already exists. Return it untouched,
+	// running no worker — the defining idempotent re-run.
+	if proj.HasIndex(src.Hash) {
+		idx, err := proj.ReadIndex(src.Hash)
+		if err != nil {
+			return axerror.New("project.read", "cannot read cached index: "+err.Error()).AsRetryable()
+		}
+		return emitJSON(stdout, indexResult{
+			Index:    proj.IndexPath(src.Hash),
+			Table:    idx.Table,
+			Source:   src.Hash,
+			Segments: idx.Segments,
+			Dim:      idx.Dim,
+			Model:    idx.Model,
+			Cached:   true,
+		})
+	}
+
+	if plan {
+		return emitJSON(stdout, indexResult{
+			Index:   proj.IndexPath(src.Hash),
+			Table:   proj.IndexTablePath(src.Hash),
+			Source:  src.Hash,
+			Cached:  false,
+			Planned: true,
+		})
+	}
+
+	w, err := resolveIndexWorker(req)
+	if err != nil {
+		return err
+	}
+	tablePath := proj.IndexTablePath(src.Hash)
+	if err := os.MkdirAll(proj.CacheDir(), 0o755); err != nil {
+		return axerror.New("project.write", "cannot create cache directory: "+err.Error()).AsRetryable()
+	}
+	resp, err := w.Invoke(context.Background(), worker.Request{
+		Op: "index",
+		Params: map[string]any{
+			"transcript": proj.TranscriptPath(src.Hash),
+			"table":      tablePath,
+		},
+	})
+	if err != nil {
+		return err // already an *axerror.Error from the worker boundary
+	}
+	idx, err := indexFromResult(resp.Result)
+	if err != nil {
+		return err
+	}
+	// The worker must have written the LanceDB table it was asked to build; a
+	// missing table is a protocol violation, not a silent success.
+	if _, err := os.Stat(tablePath); err != nil {
+		return axerror.New("worker.protocol", "index worker did not write the LanceDB table").
+			WithHint("the index worker must write the .lance table at the params.table path")
+	}
+	idx.Source = src.Hash
+	idx.Table = tablePath
+	if err := proj.WriteIndex(src.Hash, idx); err != nil {
+		return axerror.New("project.write", "cannot cache index: "+err.Error()).AsRetryable()
+	}
+	return emitJSON(stdout, indexResult{
+		Index:    proj.IndexPath(src.Hash),
+		Table:    idx.Table,
+		Source:   src.Hash,
+		Segments: idx.Segments,
+		Dim:      idx.Dim,
+		Model:    idx.Model,
+		Cached:   false,
+	})
+}
+
+// resolveIndexWorker builds the local embedding Worker from the request, falling
+// back to the CUTVEC_INDEX_WORKER env var for the executable path. With neither
+// set there is no worker to run, which is a non-retryable worker.missing.
+func resolveIndexWorker(req indexRequest) (worker.Worker, error) {
+	path := req.Worker
+	if path == "" {
+		path = os.Getenv("CUTVEC_INDEX_WORKER")
+	}
+	if path == "" {
+		return worker.Worker{}, axerror.New("worker.missing", "no index (embedding) worker configured").
+			WithHint(`set "worker" in the request or the CUTVEC_INDEX_WORKER env var to the local embedding worker executable`)
+	}
+	return worker.Worker{Path: path, Args: req.WorkerArgs}, nil
+}
+
+// indexFromResult lifts the worker's result map into an Index. A result that is
+// not shaped like an index is a protocol violation. Source and Table are set by
+// the core after the worker returns, so the worker need only report the summary.
+func indexFromResult(result map[string]any) (project.Index, error) {
+	b, err := json.Marshal(result)
+	if err != nil {
+		return project.Index{}, axerror.New("worker.protocol",
+			"cannot re-encode worker result: "+err.Error())
+	}
+	var idx project.Index
+	if err := json.Unmarshal(b, &idx); err != nil {
+		return project.Index{}, axerror.New("worker.protocol",
+			"worker result is not an index: "+err.Error()).
+			WithHint(`the index worker must return {"segments":N,"dim":D,...}`)
+	}
+	return idx, nil
 }
 
 // speakersRequest is the JSON document for the `speakers` tool. Project is
@@ -609,7 +791,7 @@ func speakersCmd(args []string, stdin io.Reader, stdout io.Writer) error {
 	if err != nil {
 		return axerror.New("project.read", "cannot read project state: "+err.Error()).AsRetryable()
 	}
-	src, err := resolveSource(m, req.Source)
+	src, err := resolveSource(m, req.Source, "speakers")
 	if err != nil {
 		return err
 	}

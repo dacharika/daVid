@@ -44,6 +44,23 @@ func TestHelperProcess(t *testing.T) {
 		out, _ := json.Marshal(resp)
 		os.Stdout.Write(out)
 		os.Exit(0)
+	case "index":
+		// A local embed worker: write the LanceDB table it was asked to build,
+		// then report the summary. No network, no python — just a file.
+		if table, ok := req.Params["table"].(string); ok && table != "" {
+			_ = os.WriteFile(table, []byte("fake lance table bytes"), 0o644)
+		}
+		resp := worker.Response{
+			Version: worker.ContractVersion,
+			Result: map[string]any{
+				"segments": 2,
+				"dim":      3,
+				"model":    "fake-local-embed",
+			},
+		}
+		out, _ := json.Marshal(resp)
+		os.Stdout.Write(out)
+		os.Exit(0)
 	case "speakers":
 		// Echo the layout the core sent so the test can prove the fixed layout
 		// travels to the worker, and return two per-time turns.
@@ -1152,6 +1169,193 @@ func TestTimelineFailureRules(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			err := run([]string{"timeline"}, strings.NewReader(tc.stdin), io.Discard)
+			var ae *axerror.Error
+			if !errors.As(err, &ae) {
+				t.Fatalf("err = %v, want *axerror.Error", err)
+			}
+			if ae.Code != tc.code {
+				t.Fatalf("code = %q, want %q", ae.Code, tc.code)
+			}
+		})
+	}
+}
+
+// indexReply is the JSON handle index returns.
+type indexReply struct {
+	Index    string `json:"index"`
+	Table    string `json:"table"`
+	Source   string `json:"source"`
+	Segments int    `json:"segments"`
+	Dim      int    `json:"dim"`
+	Model    string `json:"model"`
+	Cached   bool   `json:"cached"`
+	Planned  bool   `json:"planned"`
+}
+
+// indexWorkerEnv points a per-source step at this test binary as its worker:
+// t.Setenv marks it a helper process running only TestHelperProcess in the given
+// WORKER_MODE, so the real subprocess round-trip runs with no python on PATH.
+func indexWorkerEnv(t *testing.T, mode string) (path string, args []string) {
+	t.Helper()
+	t.Setenv("GO_WANT_HELPER_PROCESS", "1")
+	t.Setenv("WORKER_MODE", mode)
+	return os.Args[0], []string{"-test.run=TestHelperProcess"}
+}
+
+// transcribedFixture ingests contents and transcribes it via the fake whisper
+// worker, leaving a project whose sole source has a transcript ready to index.
+func transcribedFixture(t *testing.T, contents string) (dir, src string) {
+	t.Helper()
+	dir, src = ingestFixture(t, contents)
+	wpath, wargs := indexWorkerEnv(t, "transcribe")
+	runJSON(t, []string{"transcribe", dir}, map[string]any{"worker": wpath, "workerArgs": wargs}, nil)
+	return dir, src
+}
+
+// TestIndexBuildsLanceDBIndex is acceptance #1: `cutvec index <project> --json`
+// builds a local LanceDB index of the source's transcript segments. The result
+// is a handle to the cached metadata plus the sibling .lance table, and the
+// worker embeds locally (fake worker, no network / API key — acceptance #2).
+func TestIndexBuildsLanceDBIndex(t *testing.T) {
+	dir, _ := transcribedFixture(t, "fake audio bytes")
+	wpath, wargs := indexWorkerEnv(t, "index")
+
+	var res indexReply
+	runJSON(t, []string{"index", dir, "--json"}, map[string]any{"worker": wpath, "workerArgs": wargs}, &res)
+	if res.Cached {
+		t.Fatal("first index cached = true, want false (cache miss)")
+	}
+	if res.Segments != 2 || res.Dim != 3 || res.Index == "" || res.Table == "" || res.Source == "" {
+		t.Fatalf("result = %+v, want segments:2 dim:3 with index+table handles and a source hash", res)
+	}
+	if res.Model != "fake-local-embed" {
+		t.Fatalf("model = %q, want fake-local-embed", res.Model)
+	}
+
+	// The metadata handle points at a real JSON file describing the index.
+	mb, err := os.ReadFile(res.Index)
+	if err != nil {
+		t.Fatalf("index handle %q is not readable: %v", res.Index, err)
+	}
+	var got project.Index
+	if err := json.Unmarshal(mb, &got); err != nil {
+		t.Fatalf("index metadata is not JSON: %v\n%s", err, mb)
+	}
+	if got.Segments != 2 || got.Dim != 3 || got.Source != res.Source || got.Table != res.Table {
+		t.Fatalf("index metadata = %+v, want the returned handle's summary", got)
+	}
+	// The LanceDB table the worker wrote must exist on disk.
+	if _, err := os.Stat(res.Table); err != nil {
+		t.Fatalf("LanceDB table %q not written: %v", res.Table, err)
+	}
+}
+
+// TestIndexCacheHitIdempotent is acceptance #2: the index is cached and
+// idempotent. The second run is a content-hash cache hit that returns cached=true
+// and runs NO worker — proven by pointing it at a non-existent worker, which
+// would fail with worker.missing if the cache were bypassed.
+func TestIndexCacheHitIdempotent(t *testing.T) {
+	dir, _ := transcribedFixture(t, "fake audio bytes")
+	wpath, wargs := indexWorkerEnv(t, "index")
+
+	var first indexReply
+	runJSON(t, []string{"index", dir}, map[string]any{"worker": wpath, "workerArgs": wargs}, &first)
+	if first.Cached {
+		t.Fatal("first index cached = true, want false")
+	}
+
+	// Second run with a worker that cannot start: a cache hit never touches it.
+	var second indexReply
+	runJSON(t, []string{"index", dir}, map[string]any{"worker": "/nonexistent/embed-worker"}, &second)
+	if !second.Cached {
+		t.Fatal("second index cached = false, want true (cache hit on unchanged bytes)")
+	}
+	if second.Index != first.Index || second.Table != first.Table || second.Source != first.Source || second.Segments != first.Segments {
+		t.Fatalf("cache hit changed the handle: first %+v second %+v", first, second)
+	}
+}
+
+// TestIndexPlanWritesNothing asserts --plan reports the handles and cache status
+// without running the worker or writing an index.
+func TestIndexPlanWritesNothing(t *testing.T) {
+	dir, _ := transcribedFixture(t, "fake audio bytes")
+
+	var res indexReply
+	// No worker configured: --plan must still succeed since it runs none.
+	runJSON(t, []string{"index", dir, "--plan"}, map[string]any{}, &res)
+	if !res.Planned || res.Cached {
+		t.Fatalf("plan result = %+v, want planned:true cached:false", res)
+	}
+	if res.Index == "" || res.Table == "" {
+		t.Fatal("plan result is missing a handle")
+	}
+	if _, err := os.Stat(res.Index); !os.IsNotExist(err) {
+		t.Fatalf("--plan wrote the index metadata (stat err = %v), want it absent", err)
+	}
+	if _, err := os.Stat(res.Table); !os.IsNotExist(err) {
+		t.Fatalf("--plan wrote the LanceDB table (stat err = %v), want it absent", err)
+	}
+}
+
+// TestIndexRequiresTranscript asserts index refuses a source that has not been
+// transcribed: the index is built over transcript segments, so a missing
+// transcript is a stable, branchable precondition error.
+func TestIndexRequiresTranscript(t *testing.T) {
+	dir, _ := ingestFixture(t, "fake audio bytes") // ingested but not transcribed
+	err := run([]string{"index", dir}, strings.NewReader(`{}`), io.Discard)
+	var ae *axerror.Error
+	if !errors.As(err, &ae) {
+		t.Fatalf("err = %v, want *axerror.Error", err)
+	}
+	if ae.Code != "transcript.missing" {
+		t.Fatalf("code = %q, want transcript.missing", ae.Code)
+	}
+}
+
+// TestIndexWorkerErrorMapsThrough asserts a worker that cannot start surfaces as
+// its axerror code, not masked as a generic failure.
+func TestIndexWorkerErrorMapsThrough(t *testing.T) {
+	dir, _ := transcribedFixture(t, "fake audio bytes")
+	err := run([]string{"index", dir},
+		strings.NewReader(`{"worker":"/nonexistent/embed-worker"}`), io.Discard)
+	var ae *axerror.Error
+	if !errors.As(err, &ae) {
+		t.Fatalf("err = %v, want *axerror.Error", err)
+	}
+	if ae.Code != "worker.missing" {
+		t.Fatalf("code = %q, want worker.missing", ae.Code)
+	}
+}
+
+// TestIndexFailureRules pins the written behaviour for empty and malformed input:
+// each maps to a stable, machine-branchable axerror code.
+func TestIndexFailureRules(t *testing.T) {
+	initialized := filepath.Join(t.TempDir(), "proj")
+	if err := run([]string{"init"}, strings.NewReader(`{"project":"`+initialized+`"}`), io.Discard); err != nil {
+		t.Fatal(err)
+	}
+	// Initialised but no sources ingested -> nothing to index.
+	empty := filepath.Join(t.TempDir(), "empty")
+	if err := run([]string{"init"}, strings.NewReader(`{"project":"`+empty+`"}`), io.Discard); err != nil {
+		t.Fatal(err)
+	}
+
+	cases := []struct {
+		name  string
+		args  []string
+		stdin string
+		code  string
+	}{
+		{name: "no project", args: []string{"index"}, stdin: "", code: "input.invalid"},
+		{name: "two positional projects", args: []string{"index", "a", "b"}, stdin: "", code: "input.invalid"},
+		{name: "unknown flag", args: []string{"index", "--bogus"}, stdin: "", code: "cli.unknown_flag"},
+		{name: "uninitialized", args: []string{"index", filepath.Join(t.TempDir(), "none")}, stdin: "", code: "project.uninitialized"},
+		{name: "no sources", args: []string{"index", empty}, stdin: "", code: "input.empty"},
+		{name: "malformed json", args: []string{"index", initialized}, stdin: `{not json`, code: "input.invalid"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := run(tc.args, strings.NewReader(tc.stdin), io.Discard)
 			var ae *axerror.Error
 			if !errors.As(err, &ae) {
 				t.Fatalf("err = %v, want *axerror.Error", err)
