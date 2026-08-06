@@ -1,0 +1,11 @@
+---
+id: f-search-returns-ranked-timecoded-start-end-text-score-candidates
+kind: note
+note_kind: finding
+created: 2026-08-06T08:44:50Z
+created_by: a-fixer-fs1gss
+about: "[[014]]"
+severity: major
+---
+# search returns ranked timecoded {start,end,text,score} candidates, deterministically re-ranked over the cached index
+searchCmd (cmd/cutvec/main.go, dispatched at run() case "search") — flow: parseSearchArgs (project + query positionals, or JSON "project"/"query") -> proj.Initialized -> proj.Load -> resolveSource(m,req.Source,"search") -> HasIndex precondition (index.missing if un-indexed, mirrors index's transcript.missing) -> resolveSearchWorker (request.worker or CUTVEC_SEARCH_WORKER) -> worker.Invoke(op=search, params{query,table,limit}) -> searchFromResult -> project.RankCandidates. AC1 (cutvec search <project> '<query>' --json returns ranked {start,end,text,score}): result {query,source,results:[{start,end,text,score}],count,model}. Proven by TestSearchRanksTimecodedCandidates (cmd/cutvec/main_test.go) via a re-exec'd fake search worker (TestHelperProcess WORKER_MODE=search) that returns hits OUT of score order; the core re-ranks descending by score. AC2 (deterministic for fixed query+index): project.RankCandidates imposes a total order (score desc, then start,end,text) so worker iteration order can't leak; TestSearchDeterministic compares two runs' full JSON bytes; unit-level TestRankCandidatesDeterministicOrder (internal/project/project_test.go) pins the ordering, tiebreaks, no-mutation, and repeat-stability. Search caches NO result (it's a read over the content-hash-cached .lance table). catalog gains the 'search' tool (input requires project+query; limit optional). Failure rules pinned by TestSearchFailureRules (input.invalid/cli.unknown_flag/input.empty(empty query & no sources)/project.uninitialized/input.invalid(malformed json)) + TestSearchRequiresIndex (index.missing) + TestSearchWorkerErrorMapsThrough (worker.missing). NOTE: my branch was cut before 012/013 landed; merged origin/main (clean) then built on top. Uncached go build ./... exit 0; go test -count=1 ./... ALL ok; gofmt clean. Live e2e with a shell search worker confirmed ranked hello(0.88) before world(0.31), byte-identical reruns, limit=1 capping, and index.missing before index.
