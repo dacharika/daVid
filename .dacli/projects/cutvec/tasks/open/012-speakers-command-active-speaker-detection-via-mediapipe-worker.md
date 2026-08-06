@@ -14,3 +14,4 @@ the editor knows who is speaking when, for reframing and speaker-locked shorts
 - [ ] cutvec speakers <project> --json returns per-time speaker labels / turns
 - [ ] handles a fixed two-person layout
 ## Log
+- 2026-08-06T00:17:16Z claimed by a-fixer-wqc9fw
