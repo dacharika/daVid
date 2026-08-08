@@ -15,6 +15,43 @@ type Timeline struct {
 	Version   string     `xml:"version,attr,omitempty"`
 	Profile   *Profile   `xml:"profile,omitempty"`
 	Producers []Producer `xml:"producer"`
+	Playlists []Playlist `xml:"playlist"`
+	Tractor   *Tractor   `xml:"tractor,omitempty"`
+}
+
+// Playlist is an MLT <playlist>: producers played in order. A cut sequence — an
+// edit that switches between framings — is a playlist of trimmed producers.
+type Playlist struct {
+	ID      string  `xml:"id,attr"`
+	Entries []Entry `xml:"entry"`
+}
+
+// Entry places a producer in a playlist.
+type Entry struct {
+	Producer string `xml:"producer,attr"`
+}
+
+// Tractor is an MLT <tractor>: what the consumer actually renders. A timeline
+// with a playlist needs one, naming the track to play.
+type Tractor struct {
+	ID     string  `xml:"id,attr"`
+	Tracks []Track `xml:"track"`
+}
+
+// Track names a producer or playlist the tractor plays.
+type Track struct {
+	Producer string `xml:"producer,attr"`
+}
+
+// Sequence wires a playlist of the given producers into a tractor, making the
+// timeline a single ordered cut sequence.
+func (t *Timeline) Sequence(id string) {
+	pl := Playlist{ID: id}
+	for _, p := range t.Producers {
+		pl.Entries = append(pl.Entries, Entry{Producer: p.ID})
+	}
+	t.Playlists = []Playlist{pl}
+	t.Tractor = &Tractor{ID: id + "_tractor", Tracks: []Track{{Producer: id}}}
 }
 
 // Profile is MLT's <profile>: the output geometry every producer is rendered
@@ -101,6 +138,63 @@ func NewFilter(service string, kv ...string) Filter {
 // timeline's profile by keeping the given source-pixel rectangle.
 func CropRect(x, y, w, h int) Filter {
 	return NewFilter("qtcrop", "rect", fmt.Sprintf("%d %d %d %d", x, y, w, h))
+}
+
+// Landscape returns the 16:9 profile a horizontal edit is delivered in.
+func Landscape(fps int) *Profile {
+	if fps <= 0 {
+		fps = 30
+	}
+	return &Profile{
+		Width: 1920, Height: 1080,
+		DisplayAspectNum: 16, DisplayAspectDen: 9,
+		FrameRateNum: fps, FrameRateDen: 1,
+		Progressive:     1,
+		SampleAspectNum: 1, SampleAspectDen: 1,
+	}
+}
+
+// PunchIn builds the crop that pushes into a 16:9 frame and re-centres on a
+// subject: keep is the fraction of the frame width retained (0.55 is a close
+// single, 1.0 the untouched wide), and cx/cy are the subject's normalised
+// centre. Crop amounts are expressed in profile pixels via use_profile, so the
+// same timeline works regardless of the source's resolution. The kept window is
+// clamped inside the frame, so a subject near an edge yields the closest legal
+// framing instead of an invalid crop.
+func PunchIn(p *Profile, keep, cx, cy float64) Filter {
+	if p == nil {
+		p = Landscape(30)
+	}
+	if keep <= 0 || keep > 1 {
+		keep = 1
+	}
+	w, h := float64(p.Width), float64(p.Height)
+	kw := w * keep
+	kh := kw * h / w // preserve the profile's aspect
+
+	left := clampf(cx*w-kw/2, 0, w-kw)
+	top := clampf(cy*h-kh/2, 0, h-kh)
+
+	return NewFilter("crop",
+		"use_profile", "1",
+		"left", fmt.Sprintf("%.0f", left),
+		"right", fmt.Sprintf("%.0f", w-kw-left),
+		"top", fmt.Sprintf("%.0f", top),
+		"bottom", fmt.Sprintf("%.0f", h-kh-top),
+	)
+}
+
+func clampf(v, lo, hi float64) float64 {
+	if hi < lo {
+		return lo
+	}
+	if v < lo {
+		return lo
+	}
+	if v > hi {
+		return hi
+	}
+	return v
 }
 
 // Subtitles builds the filter that burns an SRT file over the video. geometry

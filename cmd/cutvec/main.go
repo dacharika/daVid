@@ -56,6 +56,8 @@ func run(args []string, stdin io.Reader, stdout io.Writer) error {
 		return speakersCmd(args[1:], stdin, stdout)
 	case "shorts":
 		return shortsCmd(args[1:], stdin, stdout)
+	case "reframe-edit":
+		return reframeCmd(args[1:], stdin, stdout)
 	case "timeline":
 		return timelineCmd(args[1:], stdin, stdout)
 	case "render":

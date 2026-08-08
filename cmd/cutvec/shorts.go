@@ -323,11 +323,11 @@ func buildSRT(t project.Transcript, start, end float64, hook string) string {
 		n++
 		words := make([]string, 0, len(group))
 		for _, w := range group {
-			words = append(words, strings.TrimSpace(w.Word))
+			words = append(words, w.Word)
 		}
 		fmt.Fprintf(&b, "%d\n%s --> %s\n%s\n\n", n,
 			srtTime(group[0].Start-start), srtTime(group[len(group)-1].End-start),
-			strings.ToUpper(strings.Join(words, " ")))
+			strings.ToUpper(joinTokens(words)))
 		group = group[:0]
 	}
 	words := append([]project.Word(nil), t.Words...)
@@ -343,6 +343,41 @@ func buildSRT(t project.Transcript, start, end float64, hook string) string {
 	}
 	flush()
 	return b.String()
+}
+
+// joinTokens reassembles whisper's per-word segments into readable text.
+// Word-level timing is obtained by asking whisper for one segment per word,
+// which splits punctuation and contractions into standalone tokens (". ", "'ve",
+// "n't"). Joined naively those read as "CETERA . I 'VE" on screen, so tokens
+// that attach to the previous word are appended without a space.
+func joinTokens(tokens []string) string {
+	var b strings.Builder
+	for _, raw := range tokens {
+		tok := strings.TrimSpace(raw)
+		if tok == "" {
+			continue
+		}
+		if b.Len() > 0 && !attachesLeft(tok) {
+			b.WriteByte(' ')
+		}
+		b.WriteString(tok)
+	}
+	return strings.TrimSpace(b.String())
+}
+
+// attachesLeft reports whether a token belongs to the preceding word with no
+// space: trailing punctuation, or a contraction tail like "'ve" / "n't".
+func attachesLeft(tok string) bool {
+	if strings.HasPrefix(tok, "'") || strings.HasPrefix(tok, "’") {
+		return true
+	}
+	if tok == "n't" || tok == "n’t" {
+		return true
+	}
+	// A token made only of punctuation clings to the word before it.
+	return strings.IndexFunc(tok, func(r rune) bool {
+		return !strings.ContainsRune(".,!?;:)]}%…", r)
+	}) < 0
 }
 
 func srtTime(seconds float64) string {
