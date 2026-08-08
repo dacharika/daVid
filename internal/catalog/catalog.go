@@ -327,6 +327,47 @@ func Default() Catalog {
 				},
 			},
 			{
+				Name:    "reframe-edit",
+				Summary: "Recipe: cut a single locked-off wide shot into an edit that looks multi-camera — punch in on whoever is speaking, fall back to the wide two-shot when nobody is, and render. Requires a source with a speaker track.",
+				InputSchema: Schema{
+					"type":     "object",
+					"required": []any{"project"},
+					"properties": map[string]any{
+						"project":          map[string]any{"type": "string", "description": "the project directory (also accepted as the first positional argument)"},
+						"source":           map[string]any{"type": "string", "description": "path, id, or hash of the source; optional when the project has exactly one"},
+						"quality":          map[string]any{"type": "string", "description": "render quality: 'proxy' for a fast look, 'final' for delivery (default)"},
+						"keep":             map[string]any{"type": "number", "description": "fraction of frame width a single keeps; smaller punches in tighter. Defaults to 0.58"},
+						"minShot":          map[string]any{"type": "number", "description": "shortest shot in seconds; shorter ones are absorbed so the edit does not ping-pong. Defaults to 1.8"},
+						"leftCentre":       map[string]any{"type": "number", "description": "normalised horizontal centre of the left seat; defaults to 0.28"},
+						"rightCentre":      map[string]any{"type": "number", "description": "normalised horizontal centre of the right seat; defaults to 0.72"},
+						"renderWorker":     map[string]any{"type": "string", "description": "path to the melt render worker; defaults to the CUTVEC_MELT_WORKER env var"},
+						"renderWorkerArgs": map[string]any{"type": "array", "description": "fixed leading arguments for the render worker", "items": map[string]any{"type": "string"}},
+					},
+				},
+				OutputSchema: Schema{
+					"type": "object",
+					"properties": map[string]any{
+						"source":   map[string]any{"type": "string", "description": "content hash of the edited source"},
+						"timeline": map[string]any{"type": "string", "description": "handle: the edit's MLT XML, editable and re-renderable"},
+						"duration": map[string]any{"type": "number", "description": "length of the edit in seconds"},
+						"shots": map[string]any{
+							"type":        "array",
+							"description": "the gapless shot list the edit cuts through",
+							"items": map[string]any{
+								"type": "object",
+								"properties": map[string]any{
+									"shot":  map[string]any{"type": "string", "description": "'left' or 'right' for a single, 'wide' for the two-shot"},
+									"start": map[string]any{"type": "number", "description": "start of the shot in seconds"},
+									"end":   map[string]any{"type": "number", "description": "end of the shot in seconds"},
+								},
+							},
+						},
+						"output":  map[string]any{"type": "string", "description": "handle: the rendered edit; absent under --plan"},
+						"planned": map[string]any{"type": "boolean", "description": "true when --plan was set: the timeline was written but nothing rendered"},
+					},
+				},
+			},
+			{
 				Name:    "timeline",
 				Summary: "Build an MLT XML timeline from clips and write it into the project directory.",
 				InputSchema: Schema{
