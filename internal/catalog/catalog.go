@@ -278,6 +278,55 @@ func Default() Catalog {
 				},
 			},
 			{
+				Name:    "shorts",
+				Summary: "Recipe: turn a query into vertical captioned shorts — searches the index for matching moments, locks the frame on whoever is speaking, burns word-timed captions, and renders each. Requires an indexed, transcribed source with a speaker track.",
+				InputSchema: Schema{
+					"type":     "object",
+					"required": []any{"project", "query"},
+					"properties": map[string]any{
+						"project":          map[string]any{"type": "string", "description": "the project directory (also accepted as the first positional argument)"},
+						"query":            map[string]any{"type": "string", "description": "what the shorts should be about (also accepted as the second positional argument)"},
+						"source":           map[string]any{"type": "string", "description": "path, id, or hash of the source; optional when the project has exactly one"},
+						"count":            map[string]any{"type": "integer", "description": "how many shorts to produce; defaults to 3"},
+						"padding":          map[string]any{"type": "number", "description": "seconds of headroom added either side of a matched moment; defaults to 0.4"},
+						"quality":          map[string]any{"type": "string", "description": "render quality: 'proxy' for a fast look, 'final' for delivery (default)"},
+						"hook":             map[string]any{"type": "string", "description": "optional caption card shown over the opening seconds"},
+						"leftCentre":       map[string]any{"type": "number", "description": "normalised horizontal centre of the left seat; defaults to 0.28"},
+						"rightCentre":      map[string]any{"type": "number", "description": "normalised horizontal centre of the right seat; defaults to 0.72"},
+						"searchWorker":     map[string]any{"type": "string", "description": "path to the search worker; defaults to the CUTVEC_SEARCH_WORKER env var"},
+						"searchWorkerArgs": map[string]any{"type": "array", "description": "fixed leading arguments for the search worker", "items": map[string]any{"type": "string"}},
+						"renderWorker":     map[string]any{"type": "string", "description": "path to the melt render worker; defaults to the CUTVEC_MELT_WORKER env var"},
+						"renderWorkerArgs": map[string]any{"type": "array", "description": "fixed leading arguments for the render worker", "items": map[string]any{"type": "string"}},
+					},
+				},
+				OutputSchema: Schema{
+					"type": "object",
+					"properties": map[string]any{
+						"query":  map[string]any{"type": "string", "description": "the query the shorts were built from"},
+						"source": map[string]any{"type": "string", "description": "content hash of the source"},
+						"shorts": map[string]any{
+							"type":        "array",
+							"description": "one entry per short, best match first",
+							"items": map[string]any{
+								"type": "object",
+								"properties": map[string]any{
+									"rank":     map[string]any{"type": "integer", "description": "1-based rank of the matched moment"},
+									"start":    map[string]any{"type": "number", "description": "start of the clip in the source, in seconds"},
+									"end":      map[string]any{"type": "number", "description": "end of the clip in the source, in seconds"},
+									"speaker":  map[string]any{"type": "string", "description": "the seat the frame is locked onto for this clip"},
+									"score":    map[string]any{"type": "number", "description": "search relevance of the matched moment"},
+									"text":     map[string]any{"type": "string", "description": "the matched transcript text"},
+									"timeline": map[string]any{"type": "string", "description": "handle: the short's MLT XML, editable and re-renderable"},
+									"captions": map[string]any{"type": "string", "description": "handle: the generated SRT caption file"},
+									"output":   map[string]any{"type": "string", "description": "handle: the rendered vertical video; absent under --plan"},
+								},
+							},
+						},
+						"planned": map[string]any{"type": "boolean", "description": "true when --plan was set: timelines and captions were written but nothing rendered"},
+					},
+				},
+			},
+			{
 				Name:    "timeline",
 				Summary: "Build an MLT XML timeline from clips and write it into the project directory.",
 				InputSchema: Schema{
