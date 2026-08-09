@@ -149,7 +149,9 @@ func TestRunDispatch(t *testing.T) {
 		{name: "describe succeeds", args: []string{"describe"}, code: ""},
 		{name: "no args prints usage", args: nil, code: ""},
 		{name: "help succeeds", args: []string{"--help"}, code: ""},
-		{name: "mcp is unimplemented", args: []string{"mcp"}, code: "mcp.unimplemented"},
+		{name: "bare mcp asks for a subcommand", args: []string{"mcp"}, code: "input.empty"},
+		{name: "unknown mcp subcommand is rejected", args: []string{"mcp", "listen"}, code: "cli.unknown_command"},
+		{name: "mcp serve takes no arguments", args: []string{"mcp", "serve", "--port"}, code: "cli.unknown_flag"},
 		{name: "unknown command", args: []string{"bogus"}, code: "cli.unknown_command"},
 	}
 
