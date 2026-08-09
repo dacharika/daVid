@@ -63,8 +63,7 @@ func run(args []string, stdin io.Reader, stdout io.Writer) error {
 	case "render":
 		return renderCmd(args[1:], stdin, stdout)
 	case "mcp":
-		return axerror.New("mcp.unimplemented", "the MCP server is not built yet").
-			WithHint("run `cutvec describe` to see the tool catalog")
+		return mcpCmd(args[1:], stdin, stdout)
 	case "-h", "--help", "help":
 		return usage()
 	default:
