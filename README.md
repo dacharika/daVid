@@ -156,6 +156,31 @@ returns `project.uninitialized`; a project with no built timeline returns
 `timeline.missing`; no configured worker returns `worker.missing`; and a worker
 that crashes or does not write the output maps to `worker.crashed`/`worker.protocol`.
 
+## Doctor: preflight the whole environment in one call
+
+`doctor` probes every dependency the pipeline needs — external binaries
+(`ffmpeg`, `ffprobe`, `whisper-cli`, `melt`, `python3`), the six python worker
+executables (via their `CUTVEC_*_WORKER` env vars), the ML python packages
+(`lancedb`, `mediapipe`, `numpy`, `opencv-python`, and a `fastembed`/
+`sentence-transformers` embedding backend), and the model files (the whisper
+ggml model and the mediapipe face landmarker) — and reports each as `ok` or
+`missing` with an actionable install hint. It runs no worker and touches no
+project, so it is safe to call as a gate before a pipeline spends minutes
+failing halfway on something that was never installed.
+
+```sh
+./build/cutvec doctor --json
+# → {"ok":false,"checks":[{"name":"ffmpeg","kind":"binary","status":"ok",…},
+#    {"name":"lancedb","kind":"package","status":"missing","hint":"pip install lancedb"},…],
+#    "missing":2,"requiredMissing":2,"missingNames":["lancedb","mediapipe"]}
+```
+
+The report is always written to stdout. When a **required** dependency is
+missing the command additionally exits non-zero with the structured
+`doctor.preflight_failed` error on stderr, so a caller can branch on the exit
+code before starting real work; when everything is present it exits `0` with
+`"ok":true`.
+
 ## Layout
 
 ```
@@ -165,6 +190,8 @@ internal/axerror/   structured errors {code, hint, retryable}
 internal/project/   explicit project-dir state: content-hash cache, resumable steps
 internal/worker/    versioned JSON contract to the Python ML workers (subprocesses)
 internal/timeline/  in-memory MLT XML timeline the agent edits, rendered via melt
+internal/doctor/    environment preflight — every binary, worker, package, model
+
 ```
 
 One package per bounded concern, with no import cycles between concerns.
