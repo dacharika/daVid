@@ -291,7 +291,7 @@ func Default() Catalog {
 			},
 			{
 				Name:    "shorts",
-				Summary: "Recipe: turn a query into vertical captioned shorts — searches the index for matching moments, locks the frame on whoever is speaking, burns word-timed captions, and renders each. Requires an indexed, transcribed source with a speaker track.",
+				Summary: "Recipe: turn a query into vertical captioned shorts — searches the index for matching moments, frames head-and-shoulders on whoever is speaking with an explicit crop window computed from the source dimensions and detected seat, burns word-timed captions, and renders each. Requires an indexed, transcribed source with a speaker track.",
 				InputSchema: Schema{
 					"type":     "object",
 					"required": []any{"project", "query"},

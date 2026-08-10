@@ -28,12 +28,24 @@ import (
 const (
 	defaultLeftCentre  = 0.28
 	defaultRightCentre = 0.72
-	// biasScale converts a normalised offset from frame centre into MLT's
-	// center_bias, which with use_profile=1 is expressed in profile-width units.
-	biasScale = 1080.0
 	// captionWords is how many words share one caption cue: enough to read,
 	// few enough to stay in sync with speech.
 	captionWords = 3
+
+	// headShouldersHeightKeep is the fraction of the source height the vertical
+	// crop window spans. Less than the full height zooms in past a full-body
+	// two-shot to a head-and-shoulders framing — the difference between a clip
+	// that is watchable on a phone and one that is not.
+	headShouldersHeightKeep = 0.7
+	// headFaceFromTop places the detected face this far down inside the crop
+	// window: high enough to leave headroom above the head, low enough that the
+	// shoulders fill the rest of the frame.
+	headFaceFromTop = 0.34
+	// defaultSrcW/defaultSrcH are the dimensions assumed when a source was
+	// ingested without an ffmpeg worker and so carries no probe. A landscape
+	// interview is the overwhelming common case; the window is still explicit.
+	defaultSrcW = 1920
+	defaultSrcH = 1080
 )
 
 type shortsRequest struct {
@@ -157,6 +169,9 @@ func shortsCmd(args []string, stdin io.Reader, stdout io.Writer) error {
 	// seating plan, so the framing works on a set this tool has never seen.
 	req.LeftCentre = seatCentre(speakers, "left", req.LeftCentre)
 	req.RightCentre = seatCentre(speakers, "right", req.RightCentre)
+	// The crop window is measured in source pixels, so it needs the source's real
+	// dimensions — recorded on the source at ingest by the ffmpeg probe.
+	srcW, srcH := sourceDims(src)
 
 	// 1. Find the moments worth cutting.
 	sw, err := resolveSearchWorker(searchRequest{
@@ -211,7 +226,14 @@ func shortsCmd(args []string, stdin io.Reader, stdout io.Writer) error {
 		if err := os.WriteFile(srt, []byte(buildSRT(transcript, start, end, req.Hook)), 0o644); err != nil {
 			return axerror.New("project.write", "cannot write captions: "+err.Error()).AsRetryable()
 		}
-		tl := buildShortTimeline(src.Path, start, end, who, srt, req)
+		// Aim the frame at the speaking seat: its horizontal centre picks the
+		// column, its vertical centre lifts the window onto the face.
+		cx := req.RightCentre
+		if who == "left" {
+			cx = req.LeftCentre
+		}
+		cy := seatCY(speakers, who, faceY)
+		tl := buildShortTimeline(src.Path, start, end, cx, cy, srcW, srcH, srt)
 		if problems := tl.Validate(); len(problems) > 0 {
 			return axerror.New("timeline.invalid",
 				"composed timeline is not renderable: "+strings.Join(problems, "; ")).
@@ -261,20 +283,14 @@ func shortsCmd(args []string, stdin io.Reader, stdout io.Writer) error {
 }
 
 // buildShortTimeline expresses one short as MLT: a vertical profile, the source
-// trimmed to the moment, a crop locked onto the speaker, and burned captions.
-func buildShortTimeline(resource string, start, end float64, who, srt string,
-	req shortsRequest) *timeline.Timeline {
+// trimmed to the moment, an explicit head-and-shoulders crop locked onto the
+// speaker's seat, and burned captions. The crop is a real source-pixel window
+// (headShouldersWindow), not a center=1 slide, so it frames the head and
+// shoulders that make a short watchable rather than the full body.
+func buildShortTimeline(resource string, start, end, cx, cy float64,
+	srcW, srcH int, srt string) *timeline.Timeline {
 
-	centre := req.RightCentre
-	if who == "left" {
-		centre = req.LeftCentre
-	}
-	// center=1 crops whatever is needed to fill the 9:16 frame; center_bias then
-	// slides that window off the frame's midpoint onto the speaker. The sign is
-	// inverted relative to frame coordinates — a positive bias walks the kept
-	// window towards the left of frame — which is verified by rendering, not
-	// assumed.
-	bias := (0.5 - centre) * biasScale
+	x, y, w, h := headShouldersWindow(srcW, srcH, cx, cy)
 
 	tl := timeline.New()
 	tl.Profile = timeline.Vertical(30)
@@ -284,15 +300,61 @@ func buildShortTimeline(resource string, start, end float64, who, srt string,
 		In:       timeline.Clock(start),
 		Out:      timeline.Clock(end),
 		Filters: []timeline.Filter{
-			timeline.NewFilter("crop",
-				"center", "1",
-				"center_bias", fmt.Sprintf("%.0f", bias),
-				"use_profile", "1",
-			),
+			timeline.CropWindow(srcW, srcH, x, y, w, h),
 			timeline.Subtitles(srt, "0 0 100% 90%", "Arial", "64", "#ffffffff"),
 		},
 	}}
 	return tl
+}
+
+// headShouldersWindow computes the source-pixel rectangle a vertical short keeps
+// to frame a speaker head-and-shoulders. The window carries the delivery
+// profile's 9:16 aspect so it fills the frame with no bars; it spans only a
+// fraction of the source height (headShouldersHeightKeep) so the subject is a
+// head-and-shoulders shot rather than a full body; it is centred horizontally on
+// the seat (cx); and it is lifted so the face (cy) sits in the upper third, with
+// headroom above and shoulders below. The window is clamped inside the source, so
+// a seat near an edge yields the closest legal framing instead of an off-frame
+// crop. cx and cy are normalised 0..1.
+func headShouldersWindow(srcW, srcH int, cx, cy float64) (x, y, w, h int) {
+	const aspect = 9.0 / 16.0
+	fw, fh := float64(srcW), float64(srcH)
+
+	ch := fh * headShouldersHeightKeep
+	cw := ch * aspect
+	// A source narrower than the window (e.g. an already-vertical clip) can't
+	// supply the full width; shrink to fit while holding the aspect.
+	if cw > fw {
+		cw = fw
+		ch = cw / aspect
+	}
+	if ch > fh {
+		ch = fh
+		cw = ch * aspect
+	}
+
+	left := cx*fw - cw/2
+	top := cy*fh - headFaceFromTop*ch
+
+	w = int(cw + 0.5)
+	h = int(ch + 0.5)
+	x = clampInt(int(left+0.5), 0, srcW-w)
+	y = clampInt(int(top+0.5), 0, srcH-h)
+	return x, y, w, h
+}
+
+// clampInt keeps v within [lo,hi]; a degenerate range (hi<lo) pins to lo.
+func clampInt(v, lo, hi int) int {
+	if hi < lo {
+		return lo
+	}
+	if v < lo {
+		return lo
+	}
+	if v > hi {
+		return hi
+	}
+	return v
 }
 
 // snapToSentence widens a matched span out to the sentence that contains it.
