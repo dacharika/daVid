@@ -6,6 +6,10 @@
 # accept the task. Bounded by iteration cap / STOP / empty backlog.
 cd ~/Documents/GitHub/cutvec || exit 1
 export PATH="$HOME/go/bin:$HOME/.local/bin:/opt/homebrew/bin:$PATH"
+# zsh aborts a command when a glob matches nothing, where bash passes the
+# pattern through. The accept step below globs for task files that often do not
+# exist, so without this every iteration drowns in "no matches found".
+setopt NULL_GLOB
 REPO=mlnomadpy/cutvec
 LOG=.dacli/drive2.log
 N=${1:-5}
@@ -20,7 +24,11 @@ for i in $(seq 1 "$N"); do
   for a in $(ls .dacli/agents/ 2>/dev/null | grep -oE 'a-fixer-[a-z0-9]+' | sort -u); do dacli agent retire "$a" >/dev/null 2>&1; done
 
   echo "  building next task…"
-  dacli loop --width 1 --max-cycles 1 --no-progress-halt > .dacli/iter2.log 2>&1
+  # --no-progress-halt takes an integer, and passing it as a bare flag made
+  # every `dacli loop` call fail instantly — the driver looked like it was
+  # running while never spawning anything. One bounded cycle needs no halt
+  # override at all.
+  dacli loop --width 1 --max-cycles 1 > .dacli/iter2.log 2>&1
   cat .dacli/iter2.log >> "$LOG"
 
   sleep 75  # let CI kick off / branch push settle
@@ -28,7 +36,9 @@ for i in $(seq 1 "$N"); do
     br=$(gh pr view "$pr" --repo $REPO --json headRefName -q .headRefName 2>/dev/null)
     # try a clean admin merge; if the branch is stale, sync it with main then retry
     if ! gh pr merge "$pr" --repo $REPO --merge --admin --delete-branch 2>>"$LOG"; then
-      wt=$(git worktree list | grep -oE "\.dacli/worktrees/[^ ]*$br[^ ]*" | head -1)
+      # ${br} braces are load-bearing: zsh reads $br[...] as an array subscript,
+      # which made this line a math error rather than a pattern.
+      wt=$(git worktree list | grep -oE "\.dacli/worktrees/[^ ]*${br}[^ ]*" | head -1)
       if [ -n "$wt" ]; then
         ( cd "$wt" && git merge origin/main -m "sync branch<-main" >> "$LOG" 2>&1 \
           && go build ./... >> "$LOG" 2>&1 && git push origin HEAD >> "$LOG" 2>&1 )

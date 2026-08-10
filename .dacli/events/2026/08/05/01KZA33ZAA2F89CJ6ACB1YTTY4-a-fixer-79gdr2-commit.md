@@ -6,7 +6,7 @@ created: 2026-08-05T23:11:13Z
 created_by: a-fixer-79gdr2
 about: "[[t-01KZ9WMYNV3JV3XM9VVGFQW4E3]]"
 origin: agent
-applied: false
+applied: true
 ---
 3dfd4f4 008: merge origin/main — resolve dispatch conflict, keep describe/schema + init/ingest/status
 role: fixer

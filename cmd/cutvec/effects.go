@@ -175,6 +175,31 @@ func seatCentre(s project.Speakers, seat string, fallback float64) float64 {
 	return pos.CX
 }
 
+// seatCY answers the vertical aim for a speaker, mirroring seatCentre: the
+// detected seat's vertical centre when it is a plausible measurement, else the
+// fallback. A crop that lifts onto the wrong height cuts off a head as surely as
+// aiming at the wrong column frames the wrong person.
+func seatCY(s project.Speakers, seat string, fallback float64) float64 {
+	pos, ok := s.Seats[seat]
+	if !ok {
+		return fallback
+	}
+	if pos.CY < 0.05 || pos.CY > 0.95 {
+		return fallback
+	}
+	return pos.CY
+}
+
+// sourceDims reports the source's pixel dimensions for framing math, preferring
+// the ffmpeg probe recorded at ingest and falling back to a landscape default
+// when a source was ingested without a worker and carries no probe.
+func sourceDims(src project.Source) (int, int) {
+	if src.Probe != nil && src.Probe.Width > 0 && src.Probe.Height > 0 {
+		return src.Probe.Width, src.Probe.Height
+	}
+	return defaultSrcW, defaultSrcH
+}
+
 // --- audio beds -------------------------------------------------------------
 
 // audioSpec is a sound laid under the edit: a music bed, a sting, room tone.

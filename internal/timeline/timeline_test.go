@@ -182,6 +182,32 @@ func TestPunchInKeepsTheRequestedFraction(t *testing.T) {
 	}
 }
 
+// CropWindow expresses a kept source-pixel rectangle as edge insets, the form
+// melt's crop filter reads. A wrong inset frames the wrong region of the source.
+func TestCropWindowExpressesTheKeptRectangleAsInsets(t *testing.T) {
+	// Keep a 606x1078 window of a 1920x1080 source starting at (657,1).
+	f := CropWindow(1920, 1080, 657, 1, 606, 1078)
+	vals := map[string]string{}
+	for _, prop := range f.Properties {
+		vals[prop.Name] = prop.Value
+	}
+	if vals["mlt_service"] != "crop" {
+		t.Fatalf("service = %q, want the plain crop filter (qtcrop renders black on the render worker's melt)", vals["mlt_service"])
+	}
+	// left=x, right=srcW-x-w, top=y, bottom=srcH-y-h.
+	for _, tc := range []struct{ name, want string }{
+		{"left", "657"}, {"right", "657"}, {"top", "1"}, {"bottom", "1"},
+	} {
+		if vals[tc.name] != tc.want {
+			t.Errorf("%s inset = %q, want %q", tc.name, vals[tc.name], tc.want)
+		}
+	}
+	// use_profile must be absent: it makes the edges a no-op on the render melt.
+	if _, ok := vals["use_profile"]; ok {
+		t.Error("CropWindow set use_profile, which reduces the explicit crop to a no-op on the render worker's melt")
+	}
+}
+
 func BenchmarkMarshalLongEdit(b *testing.B) {
 	// A full-episode edit is on the order of a hundred shots; marshalling is on
 	// the path of every recipe, so it should stay far off the critical path.

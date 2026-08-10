@@ -6,7 +6,7 @@ created: 2026-08-05T14:27:38Z
 created_by: a-7p3edw
 about: "[[t-01KZ91JE4HHBWVT92F6KFT22V3]]"
 origin: agent
-applied: false
+applied: true
 ---
 61b8747 001: scaffold Go project skeleton (cmd/cutvec + internal bounded concerns, CI-green build/test, README data-flow)
 role: -
