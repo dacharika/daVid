@@ -60,3 +60,7 @@ an agent can tell a slow render from a hung one
 - 2026-08-10T19:07:07Z verified by `go build ./... && go test ./...` (exit 0)
 - 2026-08-10T19:07:07Z deliverable: no dacli/025-progress-emit-jsonl-progress-events-for-long-steps branch — nothing to check against trunk
 - 2026-08-10T19:07:07Z completed by a-root
+- 2026-08-10T19:13:46Z accepted by a-root
+- 2026-08-10T19:13:46Z verified by `go build ./... && go test ./...` (exit 0)
+- 2026-08-10T19:13:46Z deliverable: no dacli/025-progress-emit-jsonl-progress-events-for-long-steps branch — nothing to check against trunk
+- 2026-08-10T19:13:46Z completed by a-root
