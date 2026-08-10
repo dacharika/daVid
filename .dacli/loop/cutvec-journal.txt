@@ -1,2 +1,2 @@
 window_tokens: 0
-pending_land: dacli/023-shorts-frame-head-and-shoulders-instead-of-full-body
+pending_land: dacli/024-doctor-preflight-the-whole-environment-in-one-call

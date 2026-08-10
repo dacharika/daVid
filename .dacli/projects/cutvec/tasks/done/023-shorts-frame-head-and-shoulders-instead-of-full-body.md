@@ -25,3 +25,7 @@ a vertical short is watchable on a phone, which is the whole point of the format
 - 2026-08-10T17:20:50Z closed WITHOUT verification — no --verify command was given
 - 2026-08-10T17:20:50Z deliverable: dacli/023-shorts-frame-head-and-shoulders-instead-of-full-body is merged into trunk
 - 2026-08-10T17:20:50Z completed by a-root
+- 2026-08-10T17:35:40Z accepted by a-root
+- 2026-08-10T17:35:40Z verified by `go build ./... && go test ./...` (exit 0)
+- 2026-08-10T17:35:40Z deliverable: no dacli/023-shorts-frame-head-and-shoulders-instead-of-full-body branch — nothing to check against trunk
+- 2026-08-10T17:35:40Z completed by a-root
