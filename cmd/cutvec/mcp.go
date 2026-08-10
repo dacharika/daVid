@@ -227,6 +227,16 @@ func callTool(name string, arguments json.RawMessage) mcpCallResult {
 		}
 	}
 
+	// `timeline` selects its inspect/edit subcommand with an "op" field, so the
+	// one MCP tool reaches the same positional subcommands the CLI dispatches on.
+	if name == "timeline" {
+		var m map[string]any
+		_ = json.Unmarshal(body, &m)
+		if v, ok := m["op"].(string); ok && (v == "inspect" || v == "edit") {
+			args = append(args, v)
+		}
+	}
+
 	// stdout is captured so the tool's single JSON result comes back as MCP
 	// content; progress rides the server's real stderr (its log channel), never
 	// the JSON-RPC stream on stdout.

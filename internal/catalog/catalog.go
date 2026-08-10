@@ -452,14 +452,44 @@ func Default() Catalog {
 			},
 			{
 				Name:    "timeline",
-				Summary: "Build an MLT XML timeline from clips and write it into the project directory.",
+				Summary: "Build, inspect, or edit an MLT XML timeline in the project directory. With no `op` it builds one from `clips`. `op:\"inspect\"` returns the structure (producers and their filters). `op:\"edit\"` mutates an existing timeline in place — add or remove a filter on a named producer — so an agent can adjust one filter on a composed edit without rebuilding it from search and detection.",
 				InputSchema: Schema{
 					"type":     "object",
-					"required": []any{"project", "clips"},
+					"required": []any{"project"},
 					"properties": map[string]any{
 						"project": map[string]any{
 							"type":        "string",
 							"description": "project directory the timeline is written into",
+						},
+						"op": map[string]any{
+							"type":        "string",
+							"description": "omit to build from clips; 'inspect' to read the structure back; 'edit' to add/remove filters on an existing timeline",
+							"enum":        []any{"inspect", "edit"},
+						},
+						"remove": map[string]any{
+							"type":        "array",
+							"description": "edit only: filters to drop, each {producer, service} — removes every filter with that mlt_service on the named producer",
+							"items": map[string]any{
+								"type":     "object",
+								"required": []any{"producer", "service"},
+								"properties": map[string]any{
+									"producer": map[string]any{"type": "string", "description": "the producer id to remove the filter from"},
+									"service":  map[string]any{"type": "string", "description": "the filter's mlt_service, e.g. 'crop' or 'avfilter.eq'"},
+								},
+							},
+						},
+						"add": map[string]any{
+							"type":        "array",
+							"description": "edit only: effects to attach, same shape as `effects` — each a named preset or one MLT service on a named producer (omit `producer` to apply to every clip)",
+							"items": map[string]any{
+								"type": "object",
+								"properties": map[string]any{
+									"preset":     map[string]any{"type": "string", "description": "a named filter chain: grade, denoise, denoise-strong, loudness, warm"},
+									"service":    map[string]any{"type": "string", "description": "an MLT filter name, e.g. 'avfilter.curves'"},
+									"properties": map[string]any{"type": "object", "description": "the service's properties"},
+									"producer":   map[string]any{"type": "string", "description": "limit the effect to one producer id; omit to apply to every clip"},
+								},
+							},
 						},
 						"clips": map[string]any{
 							"type":        "array",
@@ -508,8 +538,11 @@ func Default() Catalog {
 				OutputSchema: Schema{
 					"type": "object",
 					"properties": map[string]any{
-						"timeline":  map[string]any{"type": "string", "description": "handle: path to the written MLT document"},
-						"producers": map[string]any{"type": "integer", "description": "number of producers placed"},
+						"timeline":  map[string]any{"type": "string", "description": "handle: path to the MLT document"},
+						"producers": map[string]any{"type": "integer", "description": "build: number of producers placed. inspect: the producers array with each one's filters. edit: the producer ids the mutation touched"},
+						"removed":   map[string]any{"type": "integer", "description": "edit: how many filters were removed"},
+						"added":     map[string]any{"type": "integer", "description": "edit: how many filters were added"},
+						"valid":     map[string]any{"type": "boolean", "description": "inspect/edit: whether the document validates and would render"},
 						"planned":   map[string]any{"type": "boolean", "description": "true when --plan was set and nothing was written"},
 					},
 				},
