@@ -16,3 +16,5 @@ shorts and search agree on the top moments and two runs over one index cannot yi
 - [ ] go build ./... and go test ./... both exit 0; every changed Go file is gofmt-clean
 ## Log
 - 2026-08-10T20:57:57Z adopted by a-root (owner a-go-auditor-c30b9e orphaned)
+- 2026-08-10T21:46:54Z claimed by a-fixer-xganhj
+- 2026-08-10T21:50:55Z a-fixer-xganhj: PR opened: https://github.com/mlnomadpy/cutvec/pull/38 (event 01KZPTFZHVRVCFWPHEKCJN718H)

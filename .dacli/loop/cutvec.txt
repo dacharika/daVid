@@ -1,12 +1,12 @@
 project: cutvec
-cycle: 59
-trunk_marker: 44
-window_tokens: 956374
-backlog: 6
+cycle: 60
+trunk_marker: 45
+window_tokens: 966909
+backlog: 5
 status: proceed
 reason: 
 rollup_landed: 1
 rollup_produced_nothing: 0
 rollup_stalled: 0
 rollup_blocked: 0
-updated_at: 2026-08-10T21:37:13Z
+updated_at: 2026-08-10T21:46:54Z
