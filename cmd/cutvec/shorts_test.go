@@ -148,3 +148,66 @@ func TestValidateCatchesAProducerWithNoResource(t *testing.T) {
 		t.Fatal("Validate accepted an empty timeline")
 	}
 }
+
+// Search matches a passage, not a thought: an index segment can open four words
+// into a sentence. Cutting there produces a clip that starts mid-clause.
+func TestSnapToSentenceWidensToTheSentence(t *testing.T) {
+	words := []project.Word{
+		{Word: "Anyway", Start: 0, End: 1}, {Word: ".", Start: 1, End: 1.1},
+		{Word: "The", Start: 2, End: 2.4}, {Word: "winners", Start: 2.4, End: 3},
+		{Word: "find", Start: 3, End: 3.5}, {Word: "the", Start: 3.5, End: 3.8},
+		{Word: "edges", Start: 3.8, End: 4.4}, {Word: ".", Start: 4.4, End: 4.5},
+		{Word: "Next", Start: 5, End: 5.5},
+	}
+	// A match that begins at "find" and ends at "the" is mid-sentence at both ends.
+	start, end := snapToSentence(words, 3.0, 3.8, 6)
+	if start != 2.0 {
+		t.Errorf("start = %v, want 2.0 (the sentence's first word)", start)
+	}
+	if end != 4.5 {
+		t.Errorf("end = %v, want 4.5 (where the sentence lands)", end)
+	}
+}
+
+// A speaker who runs on must not drag a short into an unwatchable length, so a
+// boundary beyond the budget is not taken.
+func TestSnapToSentenceRespectsTheExtensionBudget(t *testing.T) {
+	words := []project.Word{
+		{Word: "Start", Start: 0, End: 0.5}, {Word: ".", Start: 0.5, End: 0.6},
+		{Word: "on", Start: 100, End: 100.4},
+		{Word: "and", Start: 200, End: 200.4}, {Word: ".", Start: 200.4, End: 200.5},
+	}
+	start, end := snapToSentence(words, 100, 100.4, 5)
+	if start != 100 || end != 100.4 {
+		t.Errorf("got %v..%v, want the original edges: both boundaries are far outside the budget", start, end)
+	}
+}
+
+// When a full stop is out of budget, a clause boundary still beats an arbitrary
+// word in the middle of a phrase.
+func TestSnapToSentenceFallsBackToAClause(t *testing.T) {
+	words := []project.Word{
+		{Word: "Long", Start: 0, End: 0.5}, {Word: "preamble", Start: 0.5, End: 1},
+		{Word: ",", Start: 30, End: 30.1},
+		{Word: "the", Start: 31, End: 31.3}, {Word: "point", Start: 31.3, End: 32},
+	}
+	start, _ := snapToSentence(words, 31.3, 32, 5)
+	if start != 31 {
+		t.Errorf("start = %v, want 31 (just past the comma), not the mid-phrase original", start)
+	}
+}
+
+// A clip cut mid-sentence inherits the previous clause's comma; rendering it as
+// a floating ", I've heard" looks like a typo burned into the video.
+func TestJoinTokensDropsPunctuationWithNothingToAttachTo(t *testing.T) {
+	if got := joinTokens([]string{",", "I", "'ve", "heard"}); got != "I've heard" {
+		t.Errorf("joinTokens = %q, want %q", got, "I've heard")
+	}
+	if got := joinTokens([]string{".", "?", "Next"}); got != "Next" {
+		t.Errorf("joinTokens = %q, want %q", got, "Next")
+	}
+	// Punctuation that does have a word before it must still attach.
+	if got := joinTokens([]string{"done", "."}); got != "done." {
+		t.Errorf("joinTokens = %q, want %q", got, "done.")
+	}
+}

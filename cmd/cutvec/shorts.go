@@ -42,8 +42,11 @@ type shortsRequest struct {
 	Query   string  `json:"query"`
 	Count   int     `json:"count"`
 	Padding float64 `json:"padding"`
-	Quality string  `json:"quality"`
-	Hook    string  `json:"hook"`
+	// MaxExtend caps how far a cut may travel to reach a sentence boundary, so
+	// a run-on passage cannot drag a short into an unwatchable length.
+	MaxExtend float64 `json:"maxExtend"`
+	Quality   string  `json:"quality"`
+	Hook      string  `json:"hook"`
 
 	LeftCentre  float64 `json:"leftCentre"`
 	RightCentre float64 `json:"rightCentre"`
@@ -101,6 +104,9 @@ func shortsCmd(args []string, stdin io.Reader, stdout io.Writer) error {
 	}
 	if req.Padding <= 0 {
 		req.Padding = 0.4
+	}
+	if req.MaxExtend <= 0 {
+		req.MaxExtend = 6
 	}
 	if req.Quality == "" {
 		req.Quality = "final"
@@ -190,11 +196,14 @@ func shortsCmd(args []string, stdin io.Reader, stdout io.Writer) error {
 	// 2. Compose one vertical, captioned timeline per moment.
 	out := shortsResult{Query: req.Query, Source: src.Hash, Planned: plan}
 	for i, c := range candidates {
-		start := c.Start - req.Padding
+		// Snap to the sentence first, then add a breath either side: padding a
+		// mid-clause edge only buys more of the wrong thing.
+		start, end := snapToSentence(transcript.Words, c.Start, c.End, req.MaxExtend)
+		start -= req.Padding
 		if start < 0 {
 			start = 0
 		}
-		end := c.End + req.Padding
+		end += req.Padding
 		who := speakerAt(speakers, c.Start, c.End)
 		base := filepath.Join(dir, fmt.Sprintf("%02d-%s", i+1, who))
 
@@ -286,6 +295,128 @@ func buildShortTimeline(resource string, start, end float64, who, srt string,
 	return tl
 }
 
+// snapToSentence widens a matched span out to the sentence that contains it.
+//
+// Search matches a passage, not a thought: an index segment can begin four
+// words into a sentence and stop before it lands. Cut there and the clip opens
+// mid-clause and ends on a hanging "and" — the difference between finding the
+// right moment and producing something postable. So the start walks back to the
+// last sentence end before it, and the end walks forward to the next one.
+//
+// Both walks are bounded. A speaker who runs three sentences together without a
+// full stop would otherwise drag a 20-second clip into a two-minute one, so
+// beyond maxExtend the original edge is kept: a slightly rough cut is better
+// than a clip nobody will watch.
+func snapToSentence(words []project.Word, start, end, maxExtend float64) (float64, float64) {
+	if len(words) == 0 {
+		return start, end
+	}
+	snappedStart, snappedEnd := start, end
+
+	// Walk back for an opening. A sentence start is the goal, but a speaker can
+	// run for far longer than a clip should, so when the full stop is out of
+	// budget a clause boundary is taken instead: opening on "and then..." reads
+	// far better than opening three words into a clause. Only if neither is
+	// reachable is the original edge kept.
+	var clauseStart float64 = -1
+	for i := len(words) - 1; i >= 0; i-- {
+		w := words[i]
+		if w.End > start || i+1 >= len(words) {
+			continue
+		}
+		// Open on the next real word, not on the punctuation that closed the
+		// previous one — a clip that starts on a bare comma shows one in its
+		// captions.
+		cand := words[nextWord(words, i+1)].Start
+		if start-cand > maxExtend {
+			break // everything further back is further still
+		}
+		if endsSentence(w.Word) {
+			snappedStart = cand
+			clauseStart = -1 // a sentence beats any clause found on the way
+			break
+		}
+		if clauseStart < 0 && endsClause(w.Word) {
+			clauseStart = cand
+		}
+	}
+	if clauseStart >= 0 {
+		snappedStart = clauseStart
+	}
+
+	// Walk forward to where the thought lands, with the same fallback.
+	var clauseEnd float64 = -1
+	for _, w := range words {
+		if w.End < end {
+			continue
+		}
+		if w.End-end > maxExtend {
+			break
+		}
+		if endsSentence(w.Word) {
+			snappedEnd = w.End
+			clauseEnd = -1
+			break
+		}
+		if clauseEnd < 0 && endsClause(w.Word) {
+			clauseEnd = w.End
+		}
+	}
+	if clauseEnd >= 0 {
+		snappedEnd = clauseEnd
+	}
+
+	if snappedEnd <= snappedStart {
+		return start, end // a snap that inverts the span is no snap at all
+	}
+	return snappedStart, snappedEnd
+}
+
+// endsSentence reports whether a token closes a sentence. whisper emits
+// punctuation as its own token as often as attached, so both forms count.
+func endsSentence(token string) bool {
+	return endsWithAny(token, ".?!")
+}
+
+// endsClause reports a weaker break — a comma, semicolon or dash. Not as clean
+// as a full stop, but a far better place to open or close a clip than an
+// arbitrary word in the middle of a phrase.
+func endsClause(token string) bool {
+	return endsWithAny(token, ",;:—–")
+}
+
+// nextWord returns the index of the first token from i that carries actual
+// text. whisper emits punctuation as standalone tokens, and a clip should open
+// on a word rather than on the mark that ended the previous one.
+func nextWord(words []project.Word, i int) int {
+	for ; i < len(words)-1; i++ {
+		if !punctuationOnly(words[i].Word) {
+			return i
+		}
+	}
+	return i
+}
+
+// punctuationOnly reports a token with no letters or digits in it at all.
+func punctuationOnly(token string) bool {
+	t := strings.TrimSpace(token)
+	if t == "" {
+		return true
+	}
+	return strings.IndexFunc(t, func(r rune) bool {
+		return (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9')
+	}) < 0
+}
+
+func endsWithAny(token, marks string) bool {
+	t := strings.TrimSpace(token)
+	if t == "" {
+		return false
+	}
+	r := []rune(t)
+	return strings.ContainsRune(marks, r[len(r)-1])
+}
+
 // speakerAt attributes a span to whoever holds the most of it. Falling back to
 // the left seat keeps a short renderable when detection has a gap, rather than
 // failing the whole recipe over one ambiguous moment.
@@ -359,6 +490,13 @@ func joinTokens(tokens []string) string {
 	for _, raw := range tokens {
 		tok := strings.TrimSpace(raw)
 		if tok == "" {
+			continue
+		}
+		// Punctuation attaches to the word before it, so a mark that opens a
+		// cue has nothing to attach to. A clip cut mid-sentence inherits the
+		// previous clause's comma; showing it as a floating ", I've heard"
+		// looks like a typo on screen.
+		if b.Len() == 0 && punctuationOnly(tok) {
 			continue
 		}
 		if b.Len() > 0 && !attachesLeft(tok) {
