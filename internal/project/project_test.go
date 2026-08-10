@@ -28,7 +28,7 @@ func TestIngestIsContentHashCacheHit(t *testing.T) {
 
 	src := writeSource(t, "same bytes")
 
-	first, err := p.Ingest(src)
+	first, err := p.Ingest(src, nil)
 	if err != nil {
 		t.Fatalf("first ingest: %v", err)
 	}
@@ -39,7 +39,7 @@ func TestIngestIsContentHashCacheHit(t *testing.T) {
 		t.Fatalf("cache entry missing after ingest of %q", first.Source.Hash)
 	}
 
-	second, err := p.Ingest(src)
+	second, err := p.Ingest(src, nil)
 	if err != nil {
 		t.Fatalf("second ingest: %v", err)
 	}
@@ -60,7 +60,7 @@ func TestIngestIsContentHashCacheHit(t *testing.T) {
 
 	// Different content is a genuinely new source: another miss, a second entry.
 	other := writeSource(t, "different bytes")
-	res, err := p.Ingest(other)
+	res, err := p.Ingest(other, nil)
 	if err != nil {
 		t.Fatalf("ingest other: %v", err)
 	}
@@ -72,11 +72,91 @@ func TestIngestIsContentHashCacheHit(t *testing.T) {
 	}
 }
 
+// countingProber is a fake Prober that records how many times it ran and returns
+// a fixed probe — enough to prove Ingest probes exactly once, on the cache miss.
+type countingProber struct {
+	probe Probe
+	calls int
+}
+
+func (c *countingProber) Probe(string) (Probe, error) {
+	c.calls++
+	return c.probe, nil
+}
+
+// TestIngestProbesOnceAndCaches proves the probe is measured on the cache miss,
+// stored on the source, returned unchanged on the cache-hit re-run, and that the
+// prober runs exactly once (never on the hit).
+func TestIngestProbesOnceAndCaches(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "proj")
+	p := Open(dir)
+	if _, _, err := p.Init(""); err != nil {
+		t.Fatal(err)
+	}
+	src := writeSource(t, "video bytes")
+	prober := &countingProber{probe: Probe{Width: 1920, Height: 1080, Duration: 12.5, Fps: 30}}
+
+	first, err := p.Ingest(src, prober)
+	if err != nil {
+		t.Fatalf("first ingest: %v", err)
+	}
+	if first.Source.Probe == nil {
+		t.Fatal("first ingest recorded no probe")
+	}
+	if got := *first.Source.Probe; got != prober.probe {
+		t.Fatalf("recorded probe = %+v, want %+v", got, prober.probe)
+	}
+	if prober.calls != 1 {
+		t.Fatalf("prober ran %d times on the miss, want 1", prober.calls)
+	}
+
+	// The cache-hit re-run returns the same probe and runs no prober.
+	second, err := p.Ingest(src, prober)
+	if err != nil {
+		t.Fatalf("second ingest: %v", err)
+	}
+	if !second.Cached {
+		t.Fatal("second ingest cached = false, want true")
+	}
+	if second.Source.Probe == nil || *second.Source.Probe != prober.probe {
+		t.Fatalf("cache-hit probe = %+v, want %+v", second.Source.Probe, prober.probe)
+	}
+	if prober.calls != 1 {
+		t.Fatalf("prober ran %d times total, want 1 (no run on the cache hit)", prober.calls)
+	}
+
+	// The probe round-trips through the manifest, not just the in-memory result.
+	m, err := p.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(m.Sources) != 1 || m.Sources[0].Probe == nil || *m.Sources[0].Probe != prober.probe {
+		t.Fatalf("manifest probe = %+v, want one source carrying %+v", m.Sources, prober.probe)
+	}
+}
+
+// TestIngestNilProberRecordsNoProbe pins the graceful path: with no prober the
+// source is still recorded, just without a probe.
+func TestIngestNilProberRecordsNoProbe(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "proj")
+	p := Open(dir)
+	if _, _, err := p.Init(""); err != nil {
+		t.Fatal(err)
+	}
+	res, err := p.Ingest(writeSource(t, "no worker here"), nil)
+	if err != nil {
+		t.Fatalf("ingest: %v", err)
+	}
+	if res.Source.Probe != nil {
+		t.Fatalf("probe = %+v, want nil with no prober", res.Source.Probe)
+	}
+}
+
 // TestIngestRequiresInit asserts a step that needs the manifest refuses to run on
 // an uninitialised directory rather than silently creating partial state.
 func TestIngestRequiresInit(t *testing.T) {
 	p := Open(filepath.Join(t.TempDir(), "proj"))
-	if _, err := p.Ingest(writeSource(t, "x")); err != ErrNotInitialized {
+	if _, err := p.Ingest(writeSource(t, "x"), nil); err != ErrNotInitialized {
 		t.Fatalf("Ingest on uninit project = %v, want ErrNotInitialized", err)
 	}
 	if _, err := p.Status(); err != ErrNotInitialized {

@@ -31,8 +31,11 @@ print "{\"project\":\"$PROJ\"}" | eval $CLI init >/dev/null 2>&1 \
   && ok "project created" || bad "init"
 
 step ingest
-print "{\"project\":\"$PROJ\",\"source\":\"$MEDIA\"}" | eval $CLI ingest >/dev/null 2>&1 \
-  && ok "source ingested" || bad "ingest"
+width=$(print "{\"project\":\"$PROJ\",\"source\":\"$MEDIA\",\"worker\":\"$PY\",\"workerArgs\":[\"$W/ffmpeg_worker.py\"]}" \
+  | eval $CLI ingest 2>/dev/null \
+  | grep -oE '"width": *[0-9]+' | grep -oE '[0-9]+')
+[[ -n ${width:-} && $width -gt 0 ]] && ok "source ingested, probed ${width}px wide" \
+  || bad "ingest did not probe dimensions"
 
 step transcribe
 words=$(req "$W/whisper_worker.py" | eval $CLI transcribe $PROJ --json 2>/dev/null \
