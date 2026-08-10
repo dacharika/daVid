@@ -1,6 +1,7 @@
 package main
 
 import (
+	"strconv"
 	"strings"
 	"testing"
 
@@ -68,8 +69,7 @@ func TestBuildSRTLeadsWithTheHook(t *testing.T) {
 // The composed timeline is what melt renders, so its shape is the contract:
 // vertical profile, trimmed producer, and both filters present.
 func TestBuildShortTimelineIsVerticalTrimmedAndFiltered(t *testing.T) {
-	req := shortsRequest{LeftCentre: 0.28, RightCentre: 0.72}
-	tl := buildShortTimeline("/media/in.mp4", 12.5, 20, "left", "/tmp/c.srt", req)
+	tl := buildShortTimeline("/media/in.mp4", 12.5, 20, 0.28, 0.42, 1920, 1080, "/tmp/c.srt")
 
 	if tl.Profile == nil || tl.Profile.Width != 1080 || tl.Profile.Height != 1920 {
 		t.Fatalf("profile = %+v, want 1080x1920 vertical", tl.Profile)
@@ -97,27 +97,88 @@ func TestBuildShortTimelineIsVerticalTrimmedAndFiltered(t *testing.T) {
 			t.Fatalf("MLT XML missing %q:\n%s", want, xml)
 		}
 	}
+	// AC1: the crop must be an explicit source-pixel window, not a center=1 slide.
+	if strings.Contains(string(xml), `name="center_bias"`) || strings.Contains(string(xml), `name="center"`) {
+		t.Fatalf("crop still uses center=1 rather than an explicit window:\n%s", xml)
+	}
+	// The kept window's edges must be present and explicit.
+	for _, want := range []string{`name="left"`, `name="right"`, `name="top"`, `name="bottom"`} {
+		if !strings.Contains(string(xml), want) {
+			t.Fatalf("crop filter is missing the explicit inset %s:\n%s", want, xml)
+		}
+	}
 }
 
-// Framing on the left seat must move the kept window the opposite way from the
-// right seat; a shared sign would point both shorts at the same person.
-func TestShortTimelineBiasesOppositeWaysPerSeat(t *testing.T) {
-	req := shortsRequest{LeftCentre: 0.28, RightCentre: 0.72}
-	biasOf := func(who string) string {
-		tl := buildShortTimeline("/m.mp4", 0, 1, who, "/c.srt", req)
+// Framing on the left seat must place the kept window to the left of where the
+// right seat's window sits; a shared position would point both shorts at the
+// same person.
+func TestShortTimelineWindowTracksTheSeatColumn(t *testing.T) {
+	leftOf := func(cx float64) int {
+		tl := buildShortTimeline("/m.mp4", 0, 1, cx, 0.42, 1920, 1080, "/c.srt")
 		for _, p := range tl.Producers[0].Filters[0].Properties {
-			if p.Name == "center_bias" {
-				return p.Value
+			if p.Name == "left" {
+				n, err := strconv.Atoi(p.Value)
+				if err != nil {
+					t.Fatalf("left inset %q is not an integer: %v", p.Value, err)
+				}
+				return n
 			}
 		}
-		return ""
+		t.Fatal("crop filter has no left inset")
+		return 0
 	}
-	left, right := biasOf("left"), biasOf("right")
-	if left == "" || right == "" {
-		t.Fatal("crop filter has no center_bias")
+	left, right := leftOf(0.28), leftOf(0.72)
+	if !(left < right) {
+		t.Fatalf("left-seat window left=%d not left of right-seat window left=%d; both seats would frame the same person", left, right)
 	}
-	if strings.HasPrefix(left, "-") == strings.HasPrefix(right, "-") {
-		t.Fatalf("left bias %q and right bias %q have the same sign; both seats would frame the same person", left, right)
+}
+
+// The window is what makes a short a head-and-shoulders shot instead of a full
+// body: it must carry the 9:16 delivery aspect (so it fills the frame), zoom in
+// past the full source height, stay inside the source, and sit the face high in
+// the frame with headroom above.
+func TestHeadShouldersWindowFramesHeadAndShoulders(t *testing.T) {
+	const srcW, srcH = 1920, 1080
+	cx, cy := 0.28, 0.42
+	x, y, w, h := headShouldersWindow(srcW, srcH, cx, cy)
+
+	if x < 0 || y < 0 || x+w > srcW || y+h > srcH {
+		t.Fatalf("window %d,%d %dx%d escapes the %dx%d source", x, y, w, h, srcW, srcH)
+	}
+	if h >= srcH {
+		t.Fatalf("window height %d does not zoom in past the full source height %d — that is a full body, not head-and-shoulders", h, srcH)
+	}
+	// 9:16 aspect within a pixel of rounding, so melt fills rather than bars.
+	if got, want := float64(w)/float64(h), 9.0/16.0; got < want-0.01 || got > want+0.01 {
+		t.Fatalf("window aspect %.4f (=%d/%d), want 9:16 (%.4f) so it fills the vertical frame", got, w, h, want)
+	}
+	faceY := cy * srcH
+	if faceY <= float64(y) || faceY >= float64(y+h) {
+		t.Fatalf("face at y=%.0f is outside the window rows %d..%d", faceY, y, y+h)
+	}
+	// The face sits in the upper portion (headroom above, shoulders below).
+	if pos := (faceY - float64(y)) / float64(h); pos > 0.5 {
+		t.Fatalf("face sits %.0f%% down the window; a head-and-shoulders framing keeps it in the upper half", pos*100)
+	}
+	// The horizontal window is centred on the seat.
+	if centre := float64(x) + float64(w)/2; centre < cx*srcW-2 || centre > cx*srcW+2 {
+		t.Fatalf("window horizontal centre %.0f is not on the seat column %.0f", centre, cx*srcW)
+	}
+}
+
+// A seat detected near a frame edge must yield the closest legal window, never a
+// crop that runs off the source.
+func TestHeadShouldersWindowClampsToEdges(t *testing.T) {
+	const srcW, srcH = 1920, 1080
+	for _, cx := range []float64{0.01, 0.99} {
+		x, _, w, _ := headShouldersWindow(srcW, srcH, cx, 0.42)
+		if x < 0 || x+w > srcW {
+			t.Fatalf("cx=%.2f produced window x=%d w=%d escaping [0,%d]", cx, x, w, srcW)
+		}
+	}
+	// A face near the top must not push the window above the source.
+	if _, y, _, _ := headShouldersWindow(srcW, srcH, 0.5, 0.02); y < 0 {
+		t.Fatalf("top-edge face produced negative window y=%d", y)
 	}
 }
 

@@ -217,6 +217,32 @@ func CropRect(x, y, w, h int) Filter {
 	return NewFilter("qtcrop", "rect", fmt.Sprintf("%d %d %d %d", x, y, w, h))
 }
 
+// CropWindow builds the filter that keeps a source-pixel rectangle (x,y,w,h) of a
+// srcW×srcH source and scales what remains to fill the profile. It is expressed
+// as edge insets in source pixels — the coordinate space MLT's crop filter reads
+// — so a window whose aspect matches the profile fills the frame with no bars,
+// which is what makes a real head-and-shoulders reframe rather than a padded one.
+//
+// This is deliberately the plain "crop" service, not "qtcrop" and not the
+// use_profile edge form: only this shape was observed to crop-and-fill against
+// the melt build the render worker drives; the others render black or no-op.
+func CropWindow(srcW, srcH, x, y, w, h int) Filter {
+	right := srcW - x - w
+	if right < 0 {
+		right = 0
+	}
+	bottom := srcH - y - h
+	if bottom < 0 {
+		bottom = 0
+	}
+	return NewFilter("crop",
+		"left", fmt.Sprintf("%d", x),
+		"right", fmt.Sprintf("%d", right),
+		"top", fmt.Sprintf("%d", y),
+		"bottom", fmt.Sprintf("%d", bottom),
+	)
+}
+
 // Landscape returns the 16:9 profile a horizontal edit is delivered in.
 func Landscape(fps int) *Profile {
 	if fps <= 0 {
