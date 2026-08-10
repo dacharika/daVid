@@ -2,6 +2,7 @@ package main
 
 import (
 	"errors"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -187,6 +188,10 @@ func TestGradeIsVideoAndDenoiseIsAudio(t *testing.T) {
 	}
 }
 
+// gainPtr wraps a gain literal so tests can name an explicit level; a nil Gain
+// is a bed with no gain named, which defaults to a quiet level.
+func gainPtr(g float64) *float64 { return &g }
+
 // A bed must be an extra track combined by a mix transition. Without the
 // transition MLT would play the sound instead of the dialogue, not under it.
 func TestAudioBedAddsAMixedTrackNotAReplacement(t *testing.T) {
@@ -194,7 +199,7 @@ func TestAudioBedAddsAMixedTrackNotAReplacement(t *testing.T) {
 	tl.Producers = []timeline.Producer{{ID: "v", Resource: "/v.mp4"}}
 	tl.Sequence("main")
 
-	if err := applyAudio(tl, []audioSpec{{Resource: "/music.wav", Gain: 0.15}}); err != nil {
+	if err := applyAudio(tl, []audioSpec{{Resource: "/music.wav", Gain: gainPtr(0.15)}}); err != nil {
 		t.Fatalf("applyAudio: %v", err)
 	}
 	if len(tl.Tractor.Tracks) != 2 {
@@ -223,7 +228,7 @@ func TestAudioStartOffsetBecomesALeadingBlank(t *testing.T) {
 	tl := timeline.New()
 	tl.Producers = []timeline.Producer{{ID: "v", Resource: "/v.mp4"}}
 	tl.Sequence("main")
-	if err := applyAudio(tl, []audioSpec{{Resource: "/sting.wav", Gain: 0.5, Start: 12.5}}); err != nil {
+	if err := applyAudio(tl, []audioSpec{{Resource: "/sting.wav", Gain: gainPtr(0.5), Start: 12.5}}); err != nil {
 		t.Fatal(err)
 	}
 	var bed *timeline.Playlist
@@ -247,8 +252,8 @@ func TestMultipleBedsGetDistinctTracks(t *testing.T) {
 	tl.Producers = []timeline.Producer{{ID: "v", Resource: "/v.mp4"}}
 	tl.Sequence("main")
 	err := applyAudio(tl, []audioSpec{
-		{Resource: "/music.wav", Gain: 0.12},
-		{Resource: "/sting.wav", Gain: 0.6, Start: 3},
+		{Resource: "/music.wav", Gain: gainPtr(0.12)},
+		{Resource: "/sting.wav", Gain: gainPtr(0.6), Start: 3},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -276,11 +281,74 @@ func TestAudioGainOutOfRangeIsRejected(t *testing.T) {
 	tl := timeline.New()
 	tl.Producers = []timeline.Producer{{ID: "v", Resource: "/v.mp4"}}
 	tl.Sequence("main")
-	if err := applyAudio(tl, []audioSpec{{Resource: "/m.wav", Gain: 4}}); err == nil {
+	if err := applyAudio(tl, []audioSpec{{Resource: "/m.wav", Gain: gainPtr(4)}}); err == nil {
 		t.Fatal("a gain of 4 was accepted")
 	}
-	if err := applyAudio(tl, []audioSpec{{Gain: 0.2}}); err == nil {
+	if err := applyAudio(tl, []audioSpec{{Gain: gainPtr(0.2)}}); err == nil {
 		t.Fatal("an audio entry with no resource was accepted")
+	}
+}
+
+// mixGain reads back the mix transition's start/end gain — the level the bed
+// actually plays at. start and end are always set equal by AddAudio.
+func mixGain(t *testing.T, tl *timeline.Timeline) (string, string) {
+	t.Helper()
+	if tl.Tractor == nil || len(tl.Tractor.Transitions) == 0 {
+		t.Fatal("no mix transition was built")
+	}
+	props := map[string]string{}
+	for _, p := range tl.Tractor.Transitions[len(tl.Tractor.Transitions)-1].Properties {
+		props[p.Name] = p.Value
+	}
+	if props["mlt_service"] != "mix" {
+		t.Fatalf("service = %q, want mix", props["mlt_service"])
+	}
+	return props["start"], props["end"]
+}
+
+// An omitted gain must lay a quiet bed under the dialogue, not full-scale music
+// over it. Before this fix an unset gain (0) was rewritten to 1 and drowned the
+// speech; now it defaults to the documented bed level.
+func TestAudioOmittedGainDefaultsToABedUnderDialogue(t *testing.T) {
+	tl := timeline.New()
+	tl.Producers = []timeline.Producer{{ID: "v", Resource: "/v.mp4"}}
+	tl.Sequence("main")
+
+	// No Gain named — the field is nil, exactly as an omitted JSON key unmarshals.
+	if err := applyAudio(tl, []audioSpec{{Resource: "/music.wav"}}); err != nil {
+		t.Fatalf("applyAudio: %v", err)
+	}
+	start, end := mixGain(t, tl)
+	if start == "1" || end == "1" {
+		t.Fatalf("gain = %q..%q, want a bed under the dialogue, not full scale", start, end)
+	}
+	want := strconv.FormatFloat(timeline.DefaultBedGain, 'f', -1, 64)
+	if start != want || end != want {
+		t.Errorf("gain = %q..%q, want the default bed %q", start, end, want)
+	}
+}
+
+// An explicit gain of 0 is rejected: a bed at 0 is silence, and the old code
+// turned it into full-scale music. The agent is pointed at omitting gain for the
+// default bed instead.
+func TestAudioExplicitZeroGainIsRejected(t *testing.T) {
+	tl := timeline.New()
+	tl.Producers = []timeline.Producer{{ID: "v", Resource: "/v.mp4"}}
+	tl.Sequence("main")
+
+	err := applyAudio(tl, []audioSpec{{Resource: "/music.wav", Gain: gainPtr(0)}})
+	if err == nil {
+		t.Fatal("a gain of 0 was accepted")
+	}
+	var axErr *axerror.Error
+	if !errors.As(err, &axErr) {
+		t.Fatalf("err = %v, want an axerror with a stable code", err)
+	}
+	if axErr.Code != "input.invalid" {
+		t.Errorf("code = %q, want input.invalid", axErr.Code)
+	}
+	if axErr.Hint == "" {
+		t.Error("want a hint telling the agent how to lay a bed instead")
 	}
 }
 

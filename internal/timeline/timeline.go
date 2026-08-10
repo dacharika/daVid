@@ -77,6 +77,11 @@ func (t *Timeline) Sequence(id string) {
 	t.Tractor = &Tractor{ID: id + "_tractor", Tracks: []Track{{Producer: id}}}
 }
 
+// DefaultBedGain is the level a music bed sits at when no gain is named: quiet
+// enough that dialogue stays audible above it, matching the schema's promise
+// that beds are mixed under the edit rather than substituted over it.
+const DefaultBedGain = 0.15
+
 // AddAudio lays a sound under the timeline — a music bed, a sting, room tone —
 // as a genuine second track combined by MLT's `mix` transition. Mixing is the
 // whole point: without a transition the extra track would replace the dialogue
@@ -95,7 +100,12 @@ func (t *Timeline) AddAudio(id, resource string, gain, start, fadeIn, fadeOut fl
 		t.Sequence("main")
 	}
 	if gain <= 0 {
-		gain = 1
+		// A non-positive gain is unspecified, not a request for full scale:
+		// fall back to the documented bed level so the dialogue stays audible
+		// beneath. Rewriting to 1 here would drown the speech — the opposite
+		// of a bed. Callers that validate their input (see applyAudio) reject
+		// an explicit 0 before reaching this point.
+		gain = DefaultBedGain
 	}
 
 	sound := Producer{ID: id, Resource: resource, Filters: filters}
