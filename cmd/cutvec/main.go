@@ -126,6 +126,8 @@ type timelineRequest struct {
 	// Effects attach MLT filters to the timeline: either named presets or any
 	// MLT service by name. `cutvec filters` lists what this machine's MLT has.
 	Effects []effectSpec `json:"effects"`
+	// Audio lays sounds under the edit as mixed MLT tracks.
+	Audio []audioSpec `json:"audio"`
 }
 
 // timelineClip is one media source on the timeline. Resource is required; ID
@@ -198,6 +200,11 @@ func timelineCmd(args []string, stdin io.Reader, stdout io.Writer) error {
 		return err
 	}
 	if err := applyEffects(tl, byProducer); err != nil {
+		return err
+	}
+	// Audio comes after effects so a bed is not caught by an effect meant for
+	// the picture, and it builds the track structure the mix needs.
+	if err := applyAudio(tl, req.Audio); err != nil {
 		return err
 	}
 

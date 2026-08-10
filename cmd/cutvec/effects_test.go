@@ -185,3 +185,100 @@ func TestGradeIsVideoAndDenoiseIsAudio(t *testing.T) {
 		t.Errorf("denoise = %q, want a high-pass into a spectral denoiser", got)
 	}
 }
+
+// A bed must be an extra track combined by a mix transition. Without the
+// transition MLT would play the sound instead of the dialogue, not under it.
+func TestAudioBedAddsAMixedTrackNotAReplacement(t *testing.T) {
+	tl := timeline.New()
+	tl.Producers = []timeline.Producer{{ID: "v", Resource: "/v.mp4"}}
+	tl.Sequence("main")
+
+	if err := applyAudio(tl, []audioSpec{{Resource: "/music.wav", Gain: 0.15}}); err != nil {
+		t.Fatalf("applyAudio: %v", err)
+	}
+	if len(tl.Tractor.Tracks) != 2 {
+		t.Fatalf("got %d tracks, want the video plus the bed", len(tl.Tractor.Tracks))
+	}
+	if len(tl.Tractor.Transitions) != 1 {
+		t.Fatalf("got %d transitions, want one mix", len(tl.Tractor.Transitions))
+	}
+	props := map[string]string{}
+	for _, p := range tl.Tractor.Transitions[0].Properties {
+		props[p.Name] = p.Value
+	}
+	if props["mlt_service"] != "mix" {
+		t.Errorf("service = %q, want mix", props["mlt_service"])
+	}
+	if props["sum"] != "1" {
+		t.Errorf("sum = %q, want 1 — without it the bed crossfades over the dialogue", props["sum"])
+	}
+	if props["start"] != "0.15" || props["end"] != "0.15" {
+		t.Errorf("gain = %q..%q, want the requested 0.15", props["start"], props["end"])
+	}
+}
+
+// A sting has to be able to land on a moment, which means a delay on its track.
+func TestAudioStartOffsetBecomesALeadingBlank(t *testing.T) {
+	tl := timeline.New()
+	tl.Producers = []timeline.Producer{{ID: "v", Resource: "/v.mp4"}}
+	tl.Sequence("main")
+	if err := applyAudio(tl, []audioSpec{{Resource: "/sting.wav", Gain: 0.5, Start: 12.5}}); err != nil {
+		t.Fatal(err)
+	}
+	var bed *timeline.Playlist
+	for i := range tl.Playlists {
+		if strings.HasSuffix(tl.Playlists[i].ID, "_track") {
+			bed = &tl.Playlists[i]
+		}
+	}
+	if bed == nil {
+		t.Fatal("no audio track playlist was created")
+	}
+	if bed.Entries[0].Blank != "00:00:12.500" {
+		t.Fatalf("first entry = %+v, want a 12.5s blank delaying the sting", bed.Entries[0])
+	}
+}
+
+// Two beds must not collide on one track index, or the second silently
+// replaces the first in the mix.
+func TestMultipleBedsGetDistinctTracks(t *testing.T) {
+	tl := timeline.New()
+	tl.Producers = []timeline.Producer{{ID: "v", Resource: "/v.mp4"}}
+	tl.Sequence("main")
+	err := applyAudio(tl, []audioSpec{
+		{Resource: "/music.wav", Gain: 0.12},
+		{Resource: "/sting.wav", Gain: 0.6, Start: 3},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(tl.Tractor.Tracks) != 3 || len(tl.Tractor.Transitions) != 2 {
+		t.Fatalf("tracks=%d transitions=%d, want 3 and 2",
+			len(tl.Tractor.Tracks), len(tl.Tractor.Transitions))
+	}
+	seen := map[string]bool{}
+	for _, tr := range tl.Tractor.Transitions {
+		for _, p := range tr.Properties {
+			if p.Name == "b_track" {
+				if seen[p.Value] {
+					t.Fatalf("two beds share b_track %q; one would be lost", p.Value)
+				}
+				seen[p.Value] = true
+			}
+		}
+	}
+}
+
+// Gain is a level, and a nonsense one should be refused rather than producing
+// a silent or clipped mix nobody notices until playback.
+func TestAudioGainOutOfRangeIsRejected(t *testing.T) {
+	tl := timeline.New()
+	tl.Producers = []timeline.Producer{{ID: "v", Resource: "/v.mp4"}}
+	tl.Sequence("main")
+	if err := applyAudio(tl, []audioSpec{{Resource: "/m.wav", Gain: 4}}); err == nil {
+		t.Fatal("a gain of 4 was accepted")
+	}
+	if err := applyAudio(tl, []audioSpec{{Gain: 0.2}}); err == nil {
+		t.Fatal("an audio entry with no resource was accepted")
+	}
+}
