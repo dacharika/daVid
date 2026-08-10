@@ -3,8 +3,9 @@ id: t-01KZPFZW2RA5ACV7SZHC847RHD
 kind: task
 created: 2026-08-10T18:47:04Z
 created_by: a-go-auditor-emr68x
-owner: a-go-auditor-emr68x
+owner: a-root
 priority: should
+estimate: "{optimistic: 1, probable: 2, pessimistic: 4}"
 ---
 # timeline: sequence multi-clip builds even when no audio bed is requested
 ## So that
@@ -15,3 +16,4 @@ a multi-clip 'timeline' build plays as one ordered edit instead of silently losi
 - [ ] The audio path is unchanged in effect: a build WITH audio still yields the mix tractor (video track + bed track + mix transition) and still validates; AddAudio's nil-tractor guard is kept as a safety net
 - [ ] go build ./... and go test ./... both exit 0; gofmt clean; distinct from tasks 029 (hook/caption SRT overlap) and 030 (audio bed gain) — do not touch their scope
 ## Log
+- 2026-08-10T20:57:57Z adopted by a-root (owner a-go-auditor-emr68x orphaned)

@@ -3,8 +3,9 @@ id: t-01KZPDSSRZMHR2CJNA1DSP6CNV
 kind: task
 created: 2026-08-10T18:08:47Z
 created_by: a-go-auditor-zd1s8t
-owner: a-go-auditor-zd1s8t
+owner: a-root
 priority: should
+estimate: "{optimistic: 1, probable: 2, pessimistic: 4}"
 ---
 # shorts: stop the hook cue from overlapping the first caption cue in buildSRT
 ## So that
@@ -14,3 +15,6 @@ the hook card stands alone in the opening 2.5s instead of rendering stacked with
 - [ ] The hook, when present, is still the opening cue and readable (TestBuildSRTLeadsWithTheHook still passes or is updated to also assert non-overlap)
 - [ ] go build ./... and go test -race ./... both exit 0; gofmt, go vet, and staticcheck clean
 ## Log
+- 2026-08-10T20:57:57Z adopted by a-root (owner a-go-auditor-zd1s8t orphaned)
+- 2026-08-10T20:59:00Z claimed by a-fixer-24tkme
+- 2026-08-10T21:02:49Z a-fixer-24tkme: PR opened: https://github.com/mlnomadpy/cutvec/pull/33 (event 01KZPQQXKW2J9064NYAE4NN876)

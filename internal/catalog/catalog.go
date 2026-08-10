@@ -525,7 +525,7 @@ func Default() Catalog {
 								"properties": map[string]any{
 									"resource": map[string]any{"type": "string", "description": "path to the sound file"},
 									"id":       map[string]any{"type": "string", "description": "producer id for this sound; defaults to audioN"},
-									"gain":     map[string]any{"type": "number", "description": "level from 0 to 1; around 0.15 sits a music bed under dialogue without fighting it"},
+									"gain":     map[string]any{"type": "number", "description": "level in (0,1]; omit gain for a ~0.15 bed under dialogue, which is where a music bed sits without fighting the speech. 0 is rejected — a bed at 0 is silence, not full scale."},
 									"start":    map[string]any{"type": "number", "description": "seconds into the timeline before the sound enters, so a sting can land on a moment"},
 									"fadeIn":   map[string]any{"type": "number", "description": "fade-in length in seconds"},
 									"fadeOut":  map[string]any{"type": "number", "description": "fade-out length in seconds"},

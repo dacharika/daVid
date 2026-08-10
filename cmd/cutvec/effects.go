@@ -204,12 +204,15 @@ func sourceDims(src project.Source) (int, int) {
 
 // audioSpec is a sound laid under the edit: a music bed, a sting, room tone.
 type audioSpec struct {
-	Resource string  `json:"resource"`
-	ID       string  `json:"id"`
-	Gain     float64 `json:"gain"`
-	Start    float64 `json:"start"`
-	FadeIn   float64 `json:"fadeIn"`
-	FadeOut  float64 `json:"fadeOut"`
+	Resource string `json:"resource"`
+	ID       string `json:"id"`
+	// Gain is the bed's level; a pointer so an omitted gain (nil) is told apart
+	// from an explicit 0. Omitted defaults to a quiet bed under the dialogue;
+	// an explicit 0 is rejected rather than silently rewritten to full scale.
+	Gain    *float64 `json:"gain"`
+	Start   float64  `json:"start"`
+	FadeIn  float64  `json:"fadeIn"`
+	FadeOut float64  `json:"fadeOut"`
 	// Effects apply to this sound alone — ducking or EQ on the bed without
 	// touching the dialogue.
 	Effects []effectSpec `json:"effects"`
@@ -223,10 +226,18 @@ func applyAudio(tl *timeline.Timeline, specs []audioSpec) error {
 				fmt.Sprintf("audio %d has no resource", i)).
 				WithHint("every audio entry needs a resource path to a sound file")
 		}
-		if spec.Gain < 0 || spec.Gain > 1 {
-			return axerror.New("input.invalid",
-				fmt.Sprintf("audio %d has gain %v", i, spec.Gain)).
-				WithHint("gain is a level between 0 and 1; 0.15 is a typical music bed under dialogue")
+		// An omitted gain lays a quiet bed under the dialogue; only an explicit
+		// value is validated. 0 is out of range: a bed at 0 is silence, and the
+		// old behaviour rewrote it to full scale over the speech, so it is
+		// rejected with a hint pointing at the omit-for-default path.
+		gain := timeline.DefaultBedGain
+		if spec.Gain != nil {
+			if *spec.Gain <= 0 || *spec.Gain > 1 {
+				return axerror.New("input.invalid",
+					fmt.Sprintf("audio %d has gain %v", i, *spec.Gain)).
+					WithHint("gain is a level in (0,1]; omit gain for a ~0.15 bed under dialogue, or set 0.15 for a typical music bed")
+			}
+			gain = *spec.Gain
 		}
 		id := spec.ID
 		if id == "" {
@@ -240,7 +251,7 @@ func applyAudio(tl *timeline.Timeline, specs []audioSpec) error {
 		for _, filters := range byProducer {
 			own = append(own, filters...)
 		}
-		tl.AddAudio(id, spec.Resource, spec.Gain, spec.Start, spec.FadeIn, spec.FadeOut, own...)
+		tl.AddAudio(id, spec.Resource, gain, spec.Start, spec.FadeIn, spec.FadeOut, own...)
 	}
 	return nil
 }

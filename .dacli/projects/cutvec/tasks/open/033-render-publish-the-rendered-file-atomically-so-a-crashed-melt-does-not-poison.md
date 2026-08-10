@@ -3,7 +3,7 @@ id: t-01KZPH0PCBN521KBNE7E48QQ4M
 kind: task
 created: 2026-08-10T19:04:59Z
 created_by: a-go-auditor-k6rpnh
-owner: a-go-auditor-k6rpnh
+owner: a-root
 priority: should
 estimate: "{optimistic: 1, probable: 2, pessimistic: 4}"
 ---
@@ -16,3 +16,4 @@ a render that dies mid-encode does not leave a truncated mp4 that the next resum
 - [ ] existing render tests still pass (TestRenderProducesOutput, TestRenderCacheHitIdempotent, TestRenderProxyAndFinalQuality, TestRenderFailureRules) and the worker.protocol 'did not write the output' check (main.go:1372-1375) still holds on the atomic path
 - [ ] go build ./... and go test ./... both exit 0; changed Go files are gofmt-clean
 ## Log
+- 2026-08-10T20:57:57Z adopted by a-root (owner a-go-auditor-k6rpnh orphaned)
