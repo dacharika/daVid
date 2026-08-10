@@ -76,3 +76,7 @@ framing can compute a real crop window instead of assuming one
 - 2026-08-10T19:13:45Z verified by `go build ./... && go test ./...` (exit 0)
 - 2026-08-10T19:13:45Z deliverable: no dacli/022-probe-record-source-pixel-dimensions-on-ingest branch — nothing to check against trunk
 - 2026-08-10T19:13:45Z completed by a-root
+- 2026-08-10T19:20:31Z accepted by a-root
+- 2026-08-10T19:20:31Z verified by `go build ./... && go test ./...` (exit 0)
+- 2026-08-10T19:20:31Z deliverable: no dacli/022-probe-record-source-pixel-dimensions-on-ingest branch — nothing to check against trunk
+- 2026-08-10T19:20:31Z completed by a-root

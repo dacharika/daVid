@@ -60,3 +60,7 @@ an agent can adjust one filter on a composed edit without re-running search and 
 - 2026-08-10T19:13:46Z verified by `go build ./... && go test ./...` (exit 0)
 - 2026-08-10T19:13:46Z deliverable: no dacli/026-timeline-edit-mutate-an-existing-timeline-instead-of-rebuilding-it branch — nothing to check against trunk
 - 2026-08-10T19:13:46Z completed by a-root
+- 2026-08-10T19:20:32Z accepted by a-root
+- 2026-08-10T19:20:32Z verified by `go build ./... && go test ./...` (exit 0)
+- 2026-08-10T19:20:32Z deliverable: no dacli/026-timeline-edit-mutate-an-existing-timeline-instead-of-rebuilding-it branch — nothing to check against trunk
+- 2026-08-10T19:20:32Z completed by a-root
