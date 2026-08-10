@@ -208,6 +208,102 @@ func TestCropWindowExpressesTheKeptRectangleAsInsets(t *testing.T) {
 	}
 }
 
+// Parse is Marshal's inverse: a timeline written by a build step must load back
+// into the same structured model an edit mutates, or "edit in place" is a lie.
+func TestParseRoundTripsAMarshalledTimeline(t *testing.T) {
+	tl := New()
+	tl.Profile = Vertical(30)
+	tl.Producers = []Producer{{
+		ID: "clip", Resource: "/media/in.mp4",
+		In: Clock(1.5), Out: Clock(9),
+		Filters: []Filter{
+			CropWindow(1920, 1080, 657, 1, 606, 1078),
+			Subtitles("caps.srt", "0 0 100% 90%", "Arial", "64", "#ffffffff"),
+		},
+	}}
+	tl.Sequence("edit")
+
+	out, err := tl.Marshal()
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	back, err := Parse(out)
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	if len(back.Producers) != 1 {
+		t.Fatalf("producers = %d, want 1", len(back.Producers))
+	}
+	p := back.Producers[0]
+	if p.ID != "clip" || p.Resource != "/media/in.mp4" || p.In != "00:00:01.500" {
+		t.Fatalf("producer lost fidelity: %+v", p)
+	}
+	if len(p.Filters) != 2 {
+		t.Fatalf("filters = %d, want 2", len(p.Filters))
+	}
+	if p.Filters[0].Service() != "crop" || p.Filters[1].Service() != "subtitle" {
+		t.Fatalf("filter services = %q/%q, want crop/subtitle",
+			p.Filters[0].Service(), p.Filters[1].Service())
+	}
+	// The parsed timeline must re-validate, so an edit that only reads and writes
+	// it back leaves a document melt can still render.
+	if problems := back.Validate(); len(problems) != 0 {
+		t.Fatalf("round-tripped timeline does not validate: %v", problems)
+	}
+}
+
+func TestParseRejectsGarbage(t *testing.T) {
+	if _, err := Parse([]byte("<not-mlt")); err == nil {
+		t.Fatal("Parse accepted malformed XML, want an error")
+	}
+}
+
+// Producer resolves a named producer to a live pointer, and RemoveFilterService
+// drops matching filters in place — the two operations an edit is built from.
+func TestProducerAndRemoveFilterService(t *testing.T) {
+	tl := New()
+	tl.Producers = []Producer{{
+		ID: "a", Resource: "/a.mp4",
+		Filters: []Filter{
+			NewFilter("crop", "left", "10"),
+			NewFilter("avfilter.eq", "av.contrast", "1.1"),
+			NewFilter("crop", "left", "20"),
+		},
+	}}
+
+	if tl.Producer("missing") != nil {
+		t.Fatal("Producer(missing) returned non-nil")
+	}
+	p := tl.Producer("a")
+	if p == nil {
+		t.Fatal("Producer(a) = nil, want the producer")
+	}
+
+	// Removing a service the producer never carried is a no-op reported as zero.
+	if n := p.RemoveFilterService("subtitle"); n != 0 {
+		t.Fatalf("removed %d subtitle filters, want 0", n)
+	}
+	// Removing crop drops both crop filters and leaves the eq untouched.
+	if n := p.RemoveFilterService("crop"); n != 2 {
+		t.Fatalf("removed %d crop filters, want 2", n)
+	}
+	if len(p.Filters) != 1 || p.Filters[0].Service() != "avfilter.eq" {
+		t.Fatalf("remaining filters = %+v, want only avfilter.eq", p.Filters)
+	}
+	// The pointer aliases the timeline, so the removal is visible through it.
+	if len(tl.Producers[0].Filters) != 1 {
+		t.Fatalf("timeline still has %d filters on producer a, want 1",
+			len(tl.Producers[0].Filters))
+	}
+}
+
+func TestFilterServiceIsEmptyWhenUnset(t *testing.T) {
+	f := Filter{Properties: []Property{{Name: "left", Value: "10"}}}
+	if f.Service() != "" {
+		t.Errorf("Service() = %q, want empty for a filter with no mlt_service", f.Service())
+	}
+}
+
 func BenchmarkMarshalLongEdit(b *testing.B) {
 	// A full-episode edit is on the order of a hundred shots; marshalling is on
 	// the path of every recipe, so it should stay far off the critical path.

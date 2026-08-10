@@ -175,11 +175,28 @@ type timelineResult struct {
 	Planned   bool   `json:"planned,omitempty"`
 }
 
-// timelineCmd carries one request end-to-end: it reads a JSON clip list from
-// stdin, builds the MLT XML timeline (the agent-editable artifact), writes it
-// into the project directory, and returns a path handle as JSON on stdout. With
-// --plan it reports what it would write without touching the filesystem.
+// timelineCmd dispatches the `timeline` tool. With no subcommand it builds a
+// fresh timeline from a clip list (the historic behaviour); the `inspect` and
+// `edit` subcommands read back and mutate an existing one, so an agent can adjust
+// a single filter without re-running search and detection to rebuild the edit.
 func timelineCmd(args []string, stdin io.Reader, stdout io.Writer) error {
+	if len(args) > 0 {
+		switch args[0] {
+		case "inspect":
+			return timelineInspectCmd(args[1:], stdin, stdout)
+		case "edit":
+			return timelineEditCmd(args[1:], stdin, stdout)
+		}
+	}
+	return timelineBuildCmd(args, stdin, stdout)
+}
+
+// timelineBuildCmd carries one build request end-to-end: it reads a JSON clip
+// list from stdin, builds the MLT XML timeline (the agent-editable artifact),
+// writes it into the project directory, and returns a path handle as JSON on
+// stdout. With --plan it reports what it would write without touching the
+// filesystem.
+func timelineBuildCmd(args []string, stdin io.Reader, stdout io.Writer) error {
 	plan := false
 	for _, a := range args {
 		switch a {
