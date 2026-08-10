@@ -253,11 +253,31 @@ def handle(params: dict) -> dict:
     talk = {"left": 0.0, "right": 0.0}
     for t in turns:
         talk[t["speaker"]] += t["end"] - t["start"]
-    log(f"{len(turns)} turns · left {talk['left']:.0f}s · right {talk['right']:.0f}s")
+    duration = len(left) / fps if fps else 0.0
+    attributed = talk["left"] + talk["right"]
+
+    # Detection deliberately declines to attribute ambiguous stretches rather
+    # than forcing them onto whoever spoke last. Reporting that share lets a
+    # caller judge how much of the edit will fall back to the wide two-shot,
+    # and spot a source where detection struggled instead of silently getting
+    # a mostly-wide edit.
+    coverage = {
+        "duration": round(duration, 3),
+        "attributed": round(attributed, 3),
+        "unattributed": round(max(0.0, duration - attributed), 3),
+        "left": round(talk["left"], 3),
+        "right": round(talk["right"], 3),
+    }
+    if duration > 0:
+        coverage["attributedFraction"] = round(attributed / duration, 4)
+
+    log(f"{len(turns)} turns · left {talk['left']:.0f}s · right {talk['right']:.0f}s "
+        f"· unattributed {coverage['unattributed']:.0f}s "
+        f"({100 * (1 - attributed / duration):.0f}%)" if duration else "")
     for seat, pos in seats.items():
         log(f"  {seat} seat at x={pos['cx']:.3f} y={pos['cy']:.3f} "
             f"({pos['detections']} detections)")
-    return {"layout": layout, "turns": turns, "seats": seats}
+    return {"layout": layout, "turns": turns, "seats": seats, "coverage": coverage}
 
 
 if __name__ == "__main__":

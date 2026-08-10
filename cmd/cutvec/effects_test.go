@@ -325,3 +325,38 @@ func TestSeatCentreRejectsImplausiblePositions(t *testing.T) {
 		}
 	}
 }
+
+// Coverage has to survive the cache, or a caller sees it on the first run and
+// loses it on every cache hit — exactly when they are least likely to notice.
+func TestSpeakerCoverageRoundTripsThroughTheCache(t *testing.T) {
+	dir := t.TempDir()
+	proj := project.Open(dir)
+	if _, _, err := proj.Init("t"); err != nil {
+		t.Fatal(err)
+	}
+	want := project.Speakers{
+		Layout: project.TwoPersonLayout,
+		Turns:  []project.Turn{{Speaker: "left", Start: 0, End: 5}},
+		Seats:  map[string]project.Seat{"left": {CX: 0.3, CY: 0.4, Detections: 120}},
+		Coverage: &project.Coverage{
+			Duration: 45, Attributed: 25, Unattributed: 20,
+			Left: 16.5, Right: 8.5, AttributedFraction: 0.556,
+		},
+	}
+	if err := proj.WriteSpeakers("hash", want); err != nil {
+		t.Fatal(err)
+	}
+	got, err := proj.ReadSpeakers("hash")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Coverage == nil {
+		t.Fatal("coverage was lost through the cache")
+	}
+	if got.Coverage.Unattributed != 20 || got.Coverage.AttributedFraction != 0.556 {
+		t.Fatalf("coverage = %+v, want the written values", *got.Coverage)
+	}
+	if seat, ok := got.Seats["left"]; !ok || seat.CX != 0.3 {
+		t.Fatalf("seats = %+v, want the written left seat", got.Seats)
+	}
+}

@@ -452,6 +452,22 @@ type Speakers struct {
 	// real subject rather than an assumed seating plan; a seat that was not
 	// reliably detected is absent, and callers fall back.
 	Seats map[string]Seat `json:"seats,omitempty"`
+	// Coverage is how much of the media detection was willing to attribute.
+	Coverage *Coverage `json:"coverage,omitempty"`
+}
+
+// Coverage reports how much of a source detection attributed to a speaker.
+// Ambiguous stretches are deliberately left unattributed rather than forced
+// onto whoever spoke last, and those become the wide two-shot in an edit — so a
+// low attributed fraction predicts a mostly-wide edit, and is the signal that a
+// source is hard for detection rather than genuinely quiet.
+type Coverage struct {
+	Duration           float64 `json:"duration"`
+	Attributed         float64 `json:"attributed"`
+	Unattributed       float64 `json:"unattributed"`
+	Left               float64 `json:"left"`
+	Right              float64 `json:"right"`
+	AttributedFraction float64 `json:"attributedFraction"`
 }
 
 // Seat is a speaker's position in the frame, normalised to 0..1.

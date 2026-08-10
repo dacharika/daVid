@@ -974,8 +974,13 @@ type speakersResult struct {
 	Source   string `json:"source"`
 	Layout   string `json:"layout"`
 	Turns    int    `json:"turns"`
-	Cached   bool   `json:"cached"`
-	Planned  bool   `json:"planned,omitempty"`
+	// Coverage says how much of the media was attributed to a speaker.
+	// Ambiguous stretches stay unattributed and become the wide two-shot, so a
+	// low fraction predicts a mostly-wide edit rather than a detection silently
+	// getting it wrong.
+	Coverage *project.Coverage `json:"coverage,omitempty"`
+	Cached   bool              `json:"cached"`
+	Planned  bool              `json:"planned,omitempty"`
 }
 
 // speakersCmd produces a per-time active-speaker track for an ingested source and
@@ -1028,6 +1033,7 @@ func speakersCmd(args []string, stdin io.Reader, stdout io.Writer) error {
 			Source:   src.Hash,
 			Layout:   s.Layout,
 			Turns:    len(s.Turns),
+			Coverage: s.Coverage,
 			Cached:   true,
 		})
 	}
@@ -1069,6 +1075,7 @@ func speakersCmd(args []string, stdin io.Reader, stdout io.Writer) error {
 		Source:   src.Hash,
 		Layout:   s.Layout,
 		Turns:    len(s.Turns),
+		Coverage: s.Coverage,
 		Cached:   false,
 	})
 }
