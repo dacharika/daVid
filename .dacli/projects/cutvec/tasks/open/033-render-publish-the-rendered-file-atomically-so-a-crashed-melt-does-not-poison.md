@@ -17,3 +17,5 @@ a render that dies mid-encode does not leave a truncated mp4 that the next resum
 - [ ] go build ./... and go test ./... both exit 0; changed Go files are gofmt-clean
 ## Log
 - 2026-08-10T20:57:57Z adopted by a-root (owner a-go-auditor-k6rpnh orphaned)
+- 2026-08-10T21:37:13Z claimed by a-fixer-jcyhnt
+- 2026-08-10T21:40:20Z a-fixer-jcyhnt: PR opened: https://github.com/mlnomadpy/cutvec/pull/37 (event 01KZPSWJCHXZ0C04N2V2350731)
