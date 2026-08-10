@@ -1,5 +1,5 @@
 project: cutvec
-cycle: 43
+cycle: 44
 trunk_marker: 38
 window_tokens: 787043
 backlog: 2
@@ -9,4 +9,4 @@ rollup_landed: 0
 rollup_produced_nothing: 0
 rollup_stalled: 0
 rollup_blocked: 0
-updated_at: 2026-08-10T18:36:12Z
+updated_at: 2026-08-10T18:42:45Z
