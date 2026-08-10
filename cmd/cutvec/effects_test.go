@@ -224,6 +224,9 @@ func TestAudioBedAddsAMixedTrackNotAReplacement(t *testing.T) {
 }
 
 // A sting has to be able to land on a moment, which means a delay on its track.
+// That delay must marshal to a real MLT <blank length="..."/> element — an
+// <entry length="..."> MLT does not treat as a gap, so the sting would play from
+// t=0 instead of its moment.
 func TestAudioStartOffsetBecomesALeadingBlank(t *testing.T) {
 	tl := timeline.New()
 	tl.Producers = []timeline.Producer{{ID: "v", Resource: "/v.mp4"}}
@@ -242,6 +245,47 @@ func TestAudioStartOffsetBecomesALeadingBlank(t *testing.T) {
 	}
 	if bed.Entries[0].Blank != "00:00:12.500" {
 		t.Fatalf("first entry = %+v, want a 12.5s blank delaying the sting", bed.Entries[0])
+	}
+
+	// The delay must reach MLT as a real <blank>, not an <entry length="...">.
+	raw, err := tl.Marshal()
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	xmlStr := string(raw)
+	if !strings.Contains(xmlStr, `<blank length="00:00:12.500">`) {
+		t.Fatalf("marshaled XML has no <blank> for the delayed sting:\n%s", xmlStr)
+	}
+	if strings.Contains(xmlStr, `<entry length=`) {
+		t.Fatalf("delay marshaled as an <entry length=...> MLT ignores:\n%s", xmlStr)
+	}
+	// The real producer still marshals as an <entry producer="...">.
+	if !strings.Contains(xmlStr, `<entry producer="audio0">`) {
+		t.Fatalf("sting producer is not an <entry producer=...>:\n%s", xmlStr)
+	}
+
+	// Parse must round-trip the <blank> back into the model.
+	back, err := timeline.Parse(raw)
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	var reBed *timeline.Playlist
+	for i := range back.Playlists {
+		if strings.HasSuffix(back.Playlists[i].ID, "_track") {
+			reBed = &back.Playlists[i]
+		}
+	}
+	if reBed == nil {
+		t.Fatal("round-trip lost the audio track playlist")
+	}
+	if len(reBed.Entries) != 2 {
+		t.Fatalf("round-trip entries = %+v, want a blank then the sting", reBed.Entries)
+	}
+	if reBed.Entries[0].Blank != "00:00:12.500" {
+		t.Fatalf("round-trip lost the leading blank: %+v", reBed.Entries[0])
+	}
+	if reBed.Entries[1].Producer != "audio0" {
+		t.Fatalf("round-trip lost the sting entry: %+v", reBed.Entries[1])
 	}
 }
 
