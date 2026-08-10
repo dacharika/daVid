@@ -2079,6 +2079,64 @@ func TestDoctorRejectsUnknownFlag(t *testing.T) {
 	}
 }
 
+// shortsReply is the JSON shape shorts returns: the query echoed back, the
+// searched source, and one ranked short per selected moment.
+type shortsReply struct {
+	Query  string `json:"query"`
+	Source string `json:"source"`
+	Shorts []struct {
+		Rank  int     `json:"rank"`
+		Score float64 `json:"score"`
+		Text  string  `json:"text"`
+	} `json:"shorts"`
+	Planned bool `json:"planned"`
+}
+
+// TestShortsRanksMomentsBeforeSelecting asserts shorts re-ranks the search
+// candidates into a deterministic descending-score order before capping to the
+// requested count — mirroring search — so shorts and search agree on the top
+// moments and two runs over one index cannot yield different clips. The fake
+// search worker returns hits out of score order (0.2 before 0.9); a correct
+// pass proves shorts orders them by score, not by the worker's iteration order.
+// --plan leaves the renders unpaid so the assertion needs no melt worker.
+func TestShortsRanksMomentsBeforeSelecting(t *testing.T) {
+	dir, _ := indexedFixture(t, "fake audio bytes")
+
+	// shorts frames on the speaking seat, so the source needs a speaker track.
+	spath, sargs := speakersWorkerEnv(t)
+	runJSON(t, []string{"speakers", dir}, map[string]any{"worker": spath, "workerArgs": sargs}, nil)
+
+	// Point the shorts search at the same out-of-order fake worker search uses.
+	wpath, wargs := indexWorkerEnv(t, "search")
+
+	var res shortsReply
+	runJSON(t, []string{"shorts", dir, "hello", "--plan"},
+		map[string]any{"searchWorker": wpath, "searchWorkerArgs": wargs}, &res)
+
+	if !res.Planned {
+		t.Fatalf("planned = false, want true for a --plan dry run")
+	}
+	if len(res.Shorts) != 2 {
+		t.Fatalf("shorts = %+v, want 2 ranked moments", res.Shorts)
+	}
+	// The 0.9-score "hello" hit outranks the 0.2-score "world" hit even though the
+	// worker listed them the other way — shorts selects the top moment, not the
+	// worker's first.
+	top := res.Shorts[0]
+	if top.Text != "hello" || top.Score != 0.9 {
+		t.Fatalf("top short = %+v, want text=hello score=0.9", top)
+	}
+	// Rank fields ascend from 1 while scores descend — the deterministic order.
+	for i := range res.Shorts {
+		if res.Shorts[i].Rank != i+1 {
+			t.Fatalf("shorts[%d].rank = %d, want %d", i, res.Shorts[i].Rank, i+1)
+		}
+		if i > 0 && res.Shorts[i-1].Score < res.Shorts[i].Score {
+			t.Fatalf("shorts not sorted by descending score: %+v", res.Shorts)
+		}
+	}
+}
+
 // TestDoctorInCatalog proves the tool is discoverable on both surfaces via the
 // shared catalog.
 func TestDoctorInCatalog(t *testing.T) {

@@ -204,6 +204,11 @@ func shortsCmd(args []string, stdin io.Reader, stdout io.Writer) error {
 		return axerror.New("search.empty", "no moments matched the query").
 			WithHint("try a broader query, or check the source is indexed")
 	}
+	// Re-rank into a deterministic total order regardless of the worker's
+	// iteration order, then cap to the requested count — this mirrors searchCmd
+	// so shorts and search agree on the top moments and two runs over one index
+	// cannot yield different clips.
+	candidates = project.RankCandidates(candidates)
 	if len(candidates) > req.Count {
 		candidates = candidates[:req.Count]
 	}
