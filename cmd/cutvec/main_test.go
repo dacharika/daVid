@@ -12,6 +12,7 @@ import (
 
 	"github.com/tahabsn/cutvec/internal/axerror"
 	"github.com/tahabsn/cutvec/internal/project"
+	"github.com/tahabsn/cutvec/internal/timeline"
 	"github.com/tahabsn/cutvec/internal/worker"
 )
 
@@ -338,6 +339,76 @@ func TestTimelineSlice(t *testing.T) {
 		if !strings.Contains(xml, want) {
 			t.Fatalf("timeline XML missing %q:\n%s", want, xml)
 		}
+	}
+}
+
+// TestTimelineMultiClipSequencesWithoutAudio is the regression for task 031: a
+// multi-clip build with NO audio must still sequence the clips into one ordered
+// edit — a playlist with one entry per clip plus the tractor that plays it — so
+// melt renders every clip in turn instead of silently keeping only the first.
+// Before the fix the build wrote bare <producer>s (sequencing only ran as a side
+// effect of adding an audio bed), so this fails against current main.
+func TestTimelineMultiClipSequencesWithoutAudio(t *testing.T) {
+	dir := t.TempDir()
+	reqBytes, err := json.Marshal(map[string]any{
+		"project": dir,
+		"clips": []map[string]any{
+			{"id": "cam1", "resource": "a.mp4"},
+			{"id": "cam2", "resource": "b.mp4"},
+			{"id": "cam3", "resource": "c.mp4"},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var out bytes.Buffer
+	if err := run([]string{"timeline"}, bytes.NewReader(reqBytes), &out); err != nil {
+		t.Fatalf("run timeline = %v, want nil", err)
+	}
+	var res struct {
+		Timeline string `json:"timeline"`
+	}
+	if err := json.Unmarshal(out.Bytes(), &res); err != nil {
+		t.Fatalf("result is not JSON: %v\n%s", err, out.String())
+	}
+
+	raw, err := os.ReadFile(res.Timeline)
+	if err != nil {
+		t.Fatalf("timeline handle %q was not written: %v", res.Timeline, err)
+	}
+	tl, err := timeline.Parse(raw)
+	if err != nil {
+		t.Fatalf("written timeline does not parse: %v\n%s", err, raw)
+	}
+
+	// The tractor is what melt renders; without it a no-audio build plays only
+	// the first producer.
+	if tl.Tractor == nil {
+		t.Fatalf("Tractor is nil: a multi-clip no-audio build was not sequenced\n%s", raw)
+	}
+	if len(tl.Playlists) != 1 {
+		t.Fatalf("Playlists = %d, want exactly one video playlist\n%s", len(tl.Playlists), raw)
+	}
+
+	// One entry per clip, in the order requested.
+	wantOrder := []string{"cam1", "cam2", "cam3"}
+	pl := tl.Playlists[0]
+	if len(pl.Entries) != len(wantOrder) {
+		t.Fatalf("playlist has %d entries, want %d (one per clip)\n%s",
+			len(pl.Entries), len(wantOrder), raw)
+	}
+	for i, want := range wantOrder {
+		if pl.Entries[i].Producer != want {
+			t.Fatalf("entry %d producer = %q, want %q (clip order not preserved)\n%s",
+				i, pl.Entries[i].Producer, want, raw)
+		}
+	}
+
+	// The tractor must play the sequenced playlist.
+	if len(tl.Tractor.Tracks) != 1 || tl.Tractor.Tracks[0].Producer != pl.ID {
+		t.Fatalf("tractor tracks = %+v, want a single track on playlist %q\n%s",
+			tl.Tractor.Tracks, pl.ID, raw)
 	}
 }
 

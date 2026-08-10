@@ -16,3 +16,5 @@ an agent that lays a music bed without naming a gain gets a bed under the dialog
 - [ ] Existing audio tests still pass (TestAudioBedAddsAMixedTrackNotAReplacement, TestAudioGainOutOfRangeIsRejected, TestAddAudio*); go build ./... and go test ./... both exit 0; gofmt clean. Out of scope: MLT mix rendering, the grade/denoise/sfx effect presets, and the hook/caption overlap (open task 029).
 ## Log
 - 2026-08-10T20:57:57Z adopted by a-root (owner a-go-auditor-bhk1rs orphaned)
+- 2026-08-10T21:08:28Z claimed by a-fixer-w108mq
+- 2026-08-10T21:13:41Z a-fixer-w108mq: PR opened: https://github.com/mlnomadpy/cutvec/pull/34 (event 01KZPRBKGC5CMN3WR6ZKDPZZ5N)
