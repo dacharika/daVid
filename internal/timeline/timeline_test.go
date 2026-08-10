@@ -80,6 +80,54 @@ func TestNewFilterAndTransitionPutServiceFirst(t *testing.T) {
 	}
 }
 
+// A delayed producer's gap must marshal to a real MLT <blank length="..."/> and
+// round-trip back through Parse — an <entry length="..."> MLT does not treat as
+// a gap, so the sound would play from t=0 instead of its intended moment.
+func TestBlankMarshalsAndRoundTrips(t *testing.T) {
+	tl := New()
+	tl.Producers = []Producer{{ID: "bed", Resource: "/m.wav"}}
+	tl.Playlists = []Playlist{{
+		ID: "bed_track",
+		Entries: []Entry{
+			{Blank: Clock(5)},
+			{Producer: "bed"},
+		},
+	}}
+
+	raw, err := tl.Marshal()
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	got := string(raw)
+	if !strings.Contains(got, `<blank length="00:00:05.000">`) {
+		t.Fatalf("no real <blank> element in:\n%s", got)
+	}
+	if strings.Contains(got, `<entry length=`) {
+		t.Fatalf("gap marshaled as <entry length=...> MLT ignores:\n%s", got)
+	}
+	if !strings.Contains(got, `<entry producer="bed">`) {
+		t.Fatalf("real producer is not an <entry producer=...>:\n%s", got)
+	}
+
+	back, err := Parse(raw)
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	if len(back.Playlists) != 1 {
+		t.Fatalf("playlists = %d, want one round-tripped playlist", len(back.Playlists))
+	}
+	ents := back.Playlists[0].Entries
+	if len(ents) != 2 {
+		t.Fatalf("entries = %+v, want a blank then the producer", ents)
+	}
+	if ents[0].Blank != "00:00:05.000" || ents[0].Producer != "" {
+		t.Errorf("first entry = %+v, want only the blank", ents[0])
+	}
+	if ents[1].Producer != "bed" || ents[1].Blank != "" {
+		t.Errorf("second entry = %+v, want only the producer", ents[1])
+	}
+}
+
 func TestSequenceMakesEveryProducerPlay(t *testing.T) {
 	tl := New()
 	for _, id := range []string{"a", "b"} {
