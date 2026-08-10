@@ -32,6 +32,11 @@ const (
 	// few enough to stay in sync with speech.
 	captionWords = 3
 
+	// hookSeconds is how long the opening hook card holds. Caption cues are
+	// clamped to start no earlier than this so the hook stands alone in the
+	// opening window instead of rendering stacked over the first captions.
+	hookSeconds = 2.5
+
 	// headShouldersHeightKeep is the fraction of the source height the vertical
 	// crop window spans. Less than the full height zooms in past a full-body
 	// two-shot to a head-and-shoulders framing — the difference between a clip
@@ -507,23 +512,36 @@ func speakerAt(s project.Speakers, start, end float64) string {
 func buildSRT(t project.Transcript, start, end float64, hook string) string {
 	var b strings.Builder
 	n := 0
-	if hook != "" {
+	// prevEnd is the clip-local end of the last cue emitted. Every cue is clamped
+	// to start no earlier than it, so no two cues' [start,end) spans overlap —
+	// most importantly the hook card never renders stacked over the first caption
+	// when the first spoken word begins before the hook ends.
+	prevEnd := 0.0
+	emit := func(cueStart, cueEnd float64, text string) {
+		if cueStart < prevEnd {
+			cueStart = prevEnd
+		}
+		if cueEnd < cueStart {
+			cueEnd = cueStart
+		}
 		n++
 		fmt.Fprintf(&b, "%d\n%s --> %s\n%s\n\n", n,
-			srtTime(0), srtTime(2.5), strings.ToUpper(hook))
+			srtTime(cueStart), srtTime(cueEnd), text)
+		prevEnd = cueEnd
+	}
+	if hook != "" {
+		emit(0, hookSeconds, strings.ToUpper(hook))
 	}
 	var group []project.Word
 	flush := func() {
 		if len(group) == 0 {
 			return
 		}
-		n++
 		words := make([]string, 0, len(group))
 		for _, w := range group {
 			words = append(words, w.Word)
 		}
-		fmt.Fprintf(&b, "%d\n%s --> %s\n%s\n\n", n,
-			srtTime(group[0].Start-start), srtTime(group[len(group)-1].End-start),
+		emit(group[0].Start-start, group[len(group)-1].End-start,
 			strings.ToUpper(joinTokens(words)))
 		group = group[:0]
 	}

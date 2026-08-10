@@ -46,3 +46,31 @@ the crop-filter helpers in internal/timeline stop carrying a black-rendering dea
 - 2026-08-10T19:01:49Z verified by `go build ./... && go test ./...` (exit 0)
 - 2026-08-10T19:01:49Z deliverable: no dacli/028-timeline-remove-dead-croprect-and-correct-crop-docs-that-contradict-the branch — nothing to check against trunk
 - 2026-08-10T19:01:49Z completed by a-root
+- 2026-08-10T19:07:08Z accepted by a-root
+- 2026-08-10T19:07:08Z verified by `go build ./... && go test ./...` (exit 0)
+- 2026-08-10T19:07:08Z deliverable: no dacli/028-timeline-remove-dead-croprect-and-correct-crop-docs-that-contradict-the branch — nothing to check against trunk
+- 2026-08-10T19:07:08Z completed by a-root
+- 2026-08-10T19:13:47Z accepted by a-root
+- 2026-08-10T19:13:47Z verified by `go build ./... && go test ./...` (exit 0)
+- 2026-08-10T19:13:47Z deliverable: no dacli/028-timeline-remove-dead-croprect-and-correct-crop-docs-that-contradict-the branch — nothing to check against trunk
+- 2026-08-10T19:13:47Z completed by a-root
+- 2026-08-10T19:20:33Z accepted by a-root
+- 2026-08-10T19:20:33Z verified by `go build ./... && go test ./...` (exit 0)
+- 2026-08-10T19:20:33Z deliverable: no dacli/028-timeline-remove-dead-croprect-and-correct-crop-docs-that-contradict-the branch — nothing to check against trunk
+- 2026-08-10T19:20:33Z completed by a-root
+- 2026-08-10T19:25:49Z accepted by a-root
+- 2026-08-10T19:25:49Z verified by `go build ./... && go test ./...` (exit 0)
+- 2026-08-10T19:25:49Z deliverable: no dacli/028-timeline-remove-dead-croprect-and-correct-crop-docs-that-contradict-the branch — nothing to check against trunk
+- 2026-08-10T19:25:49Z completed by a-root
+- 2026-08-10T19:32:21Z accepted by a-root
+- 2026-08-10T19:32:21Z verified by `go build ./... && go test ./...` (exit 0)
+- 2026-08-10T19:32:21Z deliverable: no dacli/028-timeline-remove-dead-croprect-and-correct-crop-docs-that-contradict-the branch — nothing to check against trunk
+- 2026-08-10T19:32:21Z completed by a-root
+- 2026-08-10T19:35:56Z accepted by a-root
+- 2026-08-10T19:35:56Z verified by `go build ./... && go test ./...` (exit 0)
+- 2026-08-10T19:35:56Z deliverable: no dacli/028-timeline-remove-dead-croprect-and-correct-crop-docs-that-contradict-the branch — nothing to check against trunk
+- 2026-08-10T19:35:56Z completed by a-root
+- 2026-08-10T19:42:26Z accepted by a-root
+- 2026-08-10T19:42:26Z verified by `go build ./... && go test ./...` (exit 0)
+- 2026-08-10T19:42:26Z deliverable: no dacli/028-timeline-remove-dead-croprect-and-correct-crop-docs-that-contradict-the branch — nothing to check against trunk
+- 2026-08-10T19:42:26Z completed by a-root

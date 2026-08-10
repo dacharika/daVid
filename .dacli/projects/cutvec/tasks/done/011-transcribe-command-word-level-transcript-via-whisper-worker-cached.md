@@ -67,3 +67,31 @@ an agent gets timecoded words to search and to build captions
 - 2026-08-10T19:01:46Z verified by `go build ./... && go test ./...` (exit 0)
 - 2026-08-10T19:01:46Z deliverable: no dacli/011-transcribe-command-word-level-transcript-via-whisper-worker-cached branch — nothing to check against trunk
 - 2026-08-10T19:01:46Z completed by a-root
+- 2026-08-10T19:07:05Z accepted by a-root
+- 2026-08-10T19:07:05Z verified by `go build ./... && go test ./...` (exit 0)
+- 2026-08-10T19:07:05Z deliverable: no dacli/011-transcribe-command-word-level-transcript-via-whisper-worker-cached branch — nothing to check against trunk
+- 2026-08-10T19:07:05Z completed by a-root
+- 2026-08-10T19:13:43Z accepted by a-root
+- 2026-08-10T19:13:43Z verified by `go build ./... && go test ./...` (exit 0)
+- 2026-08-10T19:13:43Z deliverable: no dacli/011-transcribe-command-word-level-transcript-via-whisper-worker-cached branch — nothing to check against trunk
+- 2026-08-10T19:13:43Z completed by a-root
+- 2026-08-10T19:20:29Z accepted by a-root
+- 2026-08-10T19:20:29Z verified by `go build ./... && go test ./...` (exit 0)
+- 2026-08-10T19:20:29Z deliverable: no dacli/011-transcribe-command-word-level-transcript-via-whisper-worker-cached branch — nothing to check against trunk
+- 2026-08-10T19:20:29Z completed by a-root
+- 2026-08-10T19:25:45Z accepted by a-root
+- 2026-08-10T19:25:45Z verified by `go build ./... && go test ./...` (exit 0)
+- 2026-08-10T19:25:45Z deliverable: no dacli/011-transcribe-command-word-level-transcript-via-whisper-worker-cached branch — nothing to check against trunk
+- 2026-08-10T19:25:45Z completed by a-root
+- 2026-08-10T19:32:17Z accepted by a-root
+- 2026-08-10T19:32:17Z verified by `go build ./... && go test ./...` (exit 0)
+- 2026-08-10T19:32:17Z deliverable: no dacli/011-transcribe-command-word-level-transcript-via-whisper-worker-cached branch — nothing to check against trunk
+- 2026-08-10T19:32:17Z completed by a-root
+- 2026-08-10T19:35:52Z accepted by a-root
+- 2026-08-10T19:35:52Z verified by `go build ./... && go test ./...` (exit 0)
+- 2026-08-10T19:35:52Z deliverable: no dacli/011-transcribe-command-word-level-transcript-via-whisper-worker-cached branch — nothing to check against trunk
+- 2026-08-10T19:35:52Z completed by a-root
+- 2026-08-10T19:42:23Z accepted by a-root
+- 2026-08-10T19:42:23Z verified by `go build ./... && go test ./...` (exit 0)
+- 2026-08-10T19:42:23Z deliverable: no dacli/011-transcribe-command-word-level-transcript-via-whisper-worker-cached branch — nothing to check against trunk
+- 2026-08-10T19:42:23Z completed by a-root

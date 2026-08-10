@@ -70,3 +70,31 @@ an agent asks for a moment by meaning and gets timecodes + scores
 - 2026-08-10T19:01:47Z verified by `go build ./... && go test ./...` (exit 0)
 - 2026-08-10T19:01:47Z deliverable: no dacli/014-search-command-semantic-query-returns-ranked-timecoded-candidates branch — nothing to check against trunk
 - 2026-08-10T19:01:47Z completed by a-root
+- 2026-08-10T19:07:06Z accepted by a-root
+- 2026-08-10T19:07:06Z verified by `go build ./... && go test ./...` (exit 0)
+- 2026-08-10T19:07:06Z deliverable: no dacli/014-search-command-semantic-query-returns-ranked-timecoded-candidates branch — nothing to check against trunk
+- 2026-08-10T19:07:06Z completed by a-root
+- 2026-08-10T19:13:44Z accepted by a-root
+- 2026-08-10T19:13:44Z verified by `go build ./... && go test ./...` (exit 0)
+- 2026-08-10T19:13:44Z deliverable: no dacli/014-search-command-semantic-query-returns-ranked-timecoded-candidates branch — nothing to check against trunk
+- 2026-08-10T19:13:44Z completed by a-root
+- 2026-08-10T19:20:30Z accepted by a-root
+- 2026-08-10T19:20:30Z verified by `go build ./... && go test ./...` (exit 0)
+- 2026-08-10T19:20:30Z deliverable: no dacli/014-search-command-semantic-query-returns-ranked-timecoded-candidates branch — nothing to check against trunk
+- 2026-08-10T19:20:30Z completed by a-root
+- 2026-08-10T19:25:46Z accepted by a-root
+- 2026-08-10T19:25:46Z verified by `go build ./... && go test ./...` (exit 0)
+- 2026-08-10T19:25:46Z deliverable: no dacli/014-search-command-semantic-query-returns-ranked-timecoded-candidates branch — nothing to check against trunk
+- 2026-08-10T19:25:46Z completed by a-root
+- 2026-08-10T19:32:18Z accepted by a-root
+- 2026-08-10T19:32:18Z verified by `go build ./... && go test ./...` (exit 0)
+- 2026-08-10T19:32:18Z deliverable: no dacli/014-search-command-semantic-query-returns-ranked-timecoded-candidates branch — nothing to check against trunk
+- 2026-08-10T19:32:18Z completed by a-root
+- 2026-08-10T19:35:54Z accepted by a-root
+- 2026-08-10T19:35:54Z verified by `go build ./... && go test ./...` (exit 0)
+- 2026-08-10T19:35:54Z deliverable: no dacli/014-search-command-semantic-query-returns-ranked-timecoded-candidates branch — nothing to check against trunk
+- 2026-08-10T19:35:54Z completed by a-root
+- 2026-08-10T19:42:24Z accepted by a-root
+- 2026-08-10T19:42:24Z verified by `go build ./... && go test ./...` (exit 0)
+- 2026-08-10T19:42:24Z deliverable: no dacli/014-search-command-semantic-query-returns-ranked-timecoded-candidates branch — nothing to check against trunk
+- 2026-08-10T19:42:24Z completed by a-root

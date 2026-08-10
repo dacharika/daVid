@@ -70,3 +70,31 @@ the editor knows who is speaking when, for reframing and speaker-locked shorts
 - 2026-08-10T19:01:46Z verified by `go build ./... && go test ./...` (exit 0)
 - 2026-08-10T19:01:46Z deliverable: no dacli/012-speakers-command-active-speaker-detection-via-mediapipe-worker branch — nothing to check against trunk
 - 2026-08-10T19:01:46Z completed by a-root
+- 2026-08-10T19:07:05Z accepted by a-root
+- 2026-08-10T19:07:05Z verified by `go build ./... && go test ./...` (exit 0)
+- 2026-08-10T19:07:05Z deliverable: no dacli/012-speakers-command-active-speaker-detection-via-mediapipe-worker branch — nothing to check against trunk
+- 2026-08-10T19:07:05Z completed by a-root
+- 2026-08-10T19:13:43Z accepted by a-root
+- 2026-08-10T19:13:43Z verified by `go build ./... && go test ./...` (exit 0)
+- 2026-08-10T19:13:43Z deliverable: no dacli/012-speakers-command-active-speaker-detection-via-mediapipe-worker branch — nothing to check against trunk
+- 2026-08-10T19:13:43Z completed by a-root
+- 2026-08-10T19:20:29Z accepted by a-root
+- 2026-08-10T19:20:29Z verified by `go build ./... && go test ./...` (exit 0)
+- 2026-08-10T19:20:29Z deliverable: no dacli/012-speakers-command-active-speaker-detection-via-mediapipe-worker branch — nothing to check against trunk
+- 2026-08-10T19:20:29Z completed by a-root
+- 2026-08-10T19:25:46Z accepted by a-root
+- 2026-08-10T19:25:46Z verified by `go build ./... && go test ./...` (exit 0)
+- 2026-08-10T19:25:46Z deliverable: no dacli/012-speakers-command-active-speaker-detection-via-mediapipe-worker branch — nothing to check against trunk
+- 2026-08-10T19:25:46Z completed by a-root
+- 2026-08-10T19:32:17Z accepted by a-root
+- 2026-08-10T19:32:17Z verified by `go build ./... && go test ./...` (exit 0)
+- 2026-08-10T19:32:17Z deliverable: no dacli/012-speakers-command-active-speaker-detection-via-mediapipe-worker branch — nothing to check against trunk
+- 2026-08-10T19:32:17Z completed by a-root
+- 2026-08-10T19:35:53Z accepted by a-root
+- 2026-08-10T19:35:53Z verified by `go build ./... && go test ./...` (exit 0)
+- 2026-08-10T19:35:53Z deliverable: no dacli/012-speakers-command-active-speaker-detection-via-mediapipe-worker branch — nothing to check against trunk
+- 2026-08-10T19:35:53Z completed by a-root
+- 2026-08-10T19:42:23Z accepted by a-root
+- 2026-08-10T19:42:23Z verified by `go build ./... && go test ./...` (exit 0)
+- 2026-08-10T19:42:23Z deliverable: no dacli/012-speakers-command-active-speaker-detection-via-mediapipe-worker branch — nothing to check against trunk
+- 2026-08-10T19:42:23Z completed by a-root
