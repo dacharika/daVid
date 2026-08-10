@@ -249,6 +249,16 @@ func timelineBuildCmd(args []string, stdin io.Reader, stdout io.Writer) error {
 	if err := applyEffects(tl, byProducer); err != nil {
 		return err
 	}
+	// A multi-clip build is one ordered edit, not a pile of clips: sequence the
+	// producers into a playlist + tractor so every clip plays in turn. Without
+	// this a no-audio build marshals bare <producer>s with no <playlist>, and
+	// melt plays only the first — silently losing the rest. A lone clip needs no
+	// track structure (melt plays a single producer as is). When audio is added
+	// below, AddAudio reuses this tractor; its own nil-tractor guard stays as a
+	// safety net for the audio-into-a-bare-timeline path.
+	if len(tl.Producers) >= 2 {
+		tl.Sequence("main")
+	}
 	// Audio comes after effects so a bed is not caught by an effect meant for
 	// the picture, and it builds the track structure the mix needs.
 	if err := applyAudio(tl, req.Audio); err != nil {
