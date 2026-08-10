@@ -80,6 +80,33 @@ type Source struct {
 	Path string `json:"path"`
 	// Hash is the full hex sha256 of the file's contents — the cache key.
 	Hash string `json:"hash"`
+	// Probe holds the source's intrinsic pixel dimensions, duration and fps,
+	// measured once at ingest by the ffmpeg worker. It is nil when ingest ran
+	// with no ffmpeg worker configured (probing is skipped, not an error) or on a
+	// source recorded before probing existed.
+	Probe *Probe `json:"probe,omitempty"`
+}
+
+// Probe is a source's intrinsic video dimensions, measured once at ingest by the
+// ffmpeg worker: pixel width and height, duration in seconds, and frames per
+// second. Framing reads these to compute a real crop window instead of assuming
+// one. It is recorded on the Source, so a re-ingest — a content-hash cache hit —
+// returns the same probe without re-running the worker.
+type Probe struct {
+	Width    int     `json:"width"`
+	Height   int     `json:"height"`
+	Duration float64 `json:"duration"`
+	Fps      float64 `json:"fps"`
+}
+
+// Prober measures a source's intrinsic dimensions at ingest. Ingest calls Probe
+// exactly once, and only on a content-hash cache miss, so a re-ingest of
+// unchanged bytes stays a pure cache hit that runs no prober. A nil Prober skips
+// probing entirely: ingest still records the source, just without a Probe — this
+// keeps internal/project free of any worker import, the ffmpeg boundary lives in
+// the caller.
+type Prober interface {
+	Probe(path string) (Probe, error)
 }
 
 // Initialized reports whether the project manifest exists on disk.
@@ -188,7 +215,12 @@ type IngestResult struct {
 // existing cache entry, no manifest mutation happens, and Cached is true. This
 // is what makes the step deterministic, idempotent, and resumable — the same
 // input always lands the same source exactly once.
-func (p Project) Ingest(path string) (IngestResult, error) {
+//
+// On a cache miss the source is probed via the prober (the ffmpeg worker) before
+// it is recorded, so its pixel dimensions, duration and fps are stored on the
+// Source and read straight back on the next cache-hit re-run. A nil prober skips
+// probing: the source is still recorded, just without a Probe.
+func (p Project) Ingest(path string, prober Prober) (IngestResult, error) {
 	if !p.Initialized() {
 		return IngestResult{}, ErrNotInitialized
 	}
@@ -198,7 +230,8 @@ func (p Project) Ingest(path string) (IngestResult, error) {
 	}
 	if p.CacheHit(src.Hash) {
 		// Cache hit: identical bytes were ingested before. Return the cached
-		// record untouched — the defining idempotent re-run.
+		// record untouched — the defining idempotent re-run. The probe recorded
+		// on the first ingest comes back with it; no prober runs.
 		cached, err := p.readCachedSource(src.Hash)
 		if err != nil {
 			return IngestResult{}, err
@@ -206,8 +239,19 @@ func (p Project) Ingest(path string) (IngestResult, error) {
 		return IngestResult{Source: cached, Cached: true}, nil
 	}
 
-	// Cache miss: record the source (deduped by hash) and store the cache entry
-	// so the next run of the same bytes is a hit.
+	// Cache miss: probe the source's dimensions once, before recording it, so the
+	// probe is stored on the source and a later re-ingest is a pure cache hit that
+	// runs no worker. A nil prober (no ffmpeg worker configured) leaves Probe nil.
+	if prober != nil {
+		pr, err := prober.Probe(path)
+		if err != nil {
+			return IngestResult{}, err
+		}
+		src.Probe = &pr
+	}
+
+	// Record the source (deduped by hash) and store the cache entry so the next
+	// run of the same bytes is a hit.
 	m, err := p.Load()
 	if err != nil {
 		return IngestResult{}, err

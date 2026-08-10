@@ -121,8 +121,10 @@ func Default() Catalog {
 					"type":     "object",
 					"required": []any{"project", "source"},
 					"properties": map[string]any{
-						"project": map[string]any{"type": "string", "description": "the project directory"},
-						"source":  map[string]any{"type": "string", "description": "path to the media file to ingest"},
+						"project":    map[string]any{"type": "string", "description": "the project directory"},
+						"source":     map[string]any{"type": "string", "description": "path to the media file to ingest"},
+						"worker":     map[string]any{"type": "string", "description": "ffmpeg worker executable that probes the source's dimensions; defaults to the CUTVEC_FFMPEG_WORKER env var. When unset the source is ingested without a probe."},
+						"workerArgs": map[string]any{"type": "array", "description": "leading arguments for the ffmpeg worker executable", "items": map[string]any{"type": "string"}},
 					},
 				},
 				OutputSchema: Schema{
@@ -135,6 +137,16 @@ func Default() Catalog {
 								"id":   map[string]any{"type": "string", "description": "short content-hash handle"},
 								"path": map[string]any{"type": "string", "description": "resource path ingested from"},
 								"hash": map[string]any{"type": "string", "description": "full sha256 of the file contents"},
+								"probe": map[string]any{
+									"type":        "object",
+									"description": "the source's intrinsic dimensions measured by the ffmpeg worker; absent when no worker was configured",
+									"properties": map[string]any{
+										"width":    map[string]any{"type": "integer", "description": "pixel width of the video stream"},
+										"height":   map[string]any{"type": "integer", "description": "pixel height of the video stream"},
+										"duration": map[string]any{"type": "number", "description": "duration in seconds"},
+										"fps":      map[string]any{"type": "number", "description": "frames per second"},
+									},
+								},
 							},
 						},
 						"cached":  map[string]any{"type": "boolean", "description": "true on a content-hash cache hit (identical bytes seen before)"},

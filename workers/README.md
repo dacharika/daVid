@@ -13,6 +13,7 @@ Response {"version":1,"result":{...}}
 
 | Worker | op | params | result |
 |---|---|---|---|
+| `ffmpeg_worker.py` | `probe` | `source` | `width`, `height`, `duration`, `fps` |
 | `whisper_worker.py` | `transcribe` | `source` | `language`, `text`, `words[{word,start,end}]` |
 | `mediapipe_worker.py` | `speakers` | `source`, `layout` | `layout`, `turns[{speaker,start,end}]` |
 | `index_worker.py` | `index` | `transcript`, `table` | `source`, `table`, `segments`, `dim`, `model` |
@@ -45,8 +46,9 @@ Each command takes the executable in its request, or falls back to an env var:
 
 ```bash
 PY=/path/to/python3   # the interpreter that has the ML packages installed
-export CUTVEC_WHISPER_WORKER=$PY   # + CUTVEC_INDEX_WORKER, CUTVEC_SEARCH_WORKER,
-                                   #   CUTVEC_MEDIAPIPE_WORKER, CUTVEC_MELT_WORKER
+export CUTVEC_WHISPER_WORKER=$PY   # + CUTVEC_FFMPEG_WORKER, CUTVEC_INDEX_WORKER,
+                                   #   CUTVEC_SEARCH_WORKER, CUTVEC_MEDIAPIPE_WORKER,
+                                   #   CUTVEC_MELT_WORKER
 ```
 
 Per-request (this is what the smoke test does), which also carries the script path:

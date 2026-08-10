@@ -287,10 +287,15 @@ func initCmd(args []string, stdin io.Reader, stdout io.Writer) error {
 }
 
 // ingestRequest is the JSON document for the `ingest` tool: the project to record
-// into and the source media file to ingest.
+// into and the source media file to ingest. Worker/WorkerArgs locate the ffmpeg
+// worker that probes the source's pixel dimensions; when Worker is empty the
+// CUTVEC_FFMPEG_WORKER env var is used, and when neither is set the source is
+// still ingested, just without a probe.
 type ingestRequest struct {
-	Project string `json:"project"`
-	Source  string `json:"source"`
+	Project    string   `json:"project"`
+	Source     string   `json:"source"`
+	Worker     string   `json:"worker"`
+	WorkerArgs []string `json:"workerArgs"`
 }
 
 // ingestResult is the handle returned by `ingest`: the recorded source and
@@ -335,11 +340,64 @@ func ingestCmd(args []string, stdin io.Reader, stdout io.Writer) error {
 		}
 		return emitJSON(stdout, ingestResult{Source: src, Cached: proj.CacheHit(src.Hash), Planned: true})
 	}
-	res, err := proj.Ingest(req.Source)
+	res, err := proj.Ingest(req.Source, resolveProber(req))
 	if err != nil {
 		return mapSourceErr(err)
 	}
 	return emitJSON(stdout, ingestResult{Source: res.Source, Cached: res.Cached})
+}
+
+// ffmpegProber measures a source's dimensions by invoking the ffmpeg worker with
+// op=probe. It adapts the worker boundary to project.Prober so Ingest can record
+// width/height/duration/fps on the source without importing the worker package.
+type ffmpegProber struct {
+	w worker.Worker
+}
+
+// Probe invokes the ffmpeg worker and lifts its result into a project.Probe. Any
+// worker failure surfaces as the *axerror.Error the worker boundary returns.
+func (fp ffmpegProber) Probe(path string) (project.Probe, error) {
+	resp, err := fp.w.Invoke(context.Background(), worker.Request{
+		Op:     "probe",
+		Params: map[string]any{"source": path},
+	})
+	if err != nil {
+		return project.Probe{}, err // already an *axerror.Error from the worker boundary
+	}
+	return probeFromResult(resp.Result)
+}
+
+// resolveProber returns the ffmpeg prober ingest should use, or nil when no
+// ffmpeg worker is configured. The worker comes from the request's worker field
+// or, failing that, the CUTVEC_FFMPEG_WORKER env var. A nil prober means the
+// source is ingested without a probe rather than failing — dimensions are a best
+// effort, not a precondition for recording the source.
+func resolveProber(req ingestRequest) project.Prober {
+	path := req.Worker
+	if path == "" {
+		path = os.Getenv("CUTVEC_FFMPEG_WORKER")
+	}
+	if path == "" {
+		return nil
+	}
+	return ffmpegProber{w: worker.Worker{Path: path, Args: req.WorkerArgs}}
+}
+
+// probeFromResult lifts the ffmpeg worker's result map into a project.Probe. A
+// result that is not shaped like a probe is a protocol violation.
+func probeFromResult(result map[string]any) (project.Probe, error) {
+	b, err := json.Marshal(result)
+	if err != nil {
+		return project.Probe{}, axerror.New("worker.protocol",
+			"cannot re-encode worker result: "+err.Error())
+	}
+	var pr project.Probe
+	if err := json.Unmarshal(b, &pr); err != nil {
+		return project.Probe{}, axerror.New("worker.protocol",
+			"worker result is not a probe: "+err.Error()).
+			WithHint(`the ffmpeg worker must return {"width","height","duration","fps"}`)
+	}
+	return pr, nil
 }
 
 // statusRequest is the optional JSON document for the `status` tool: the project
