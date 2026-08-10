@@ -322,6 +322,60 @@ func (t *Timeline) Marshal() ([]byte, error) {
 	return xml.MarshalIndent(t, "", "  ")
 }
 
+// Parse decodes MLT XML bytes back into a Timeline — the inverse of Marshal. It
+// is what lets an agent load a timeline it (or an earlier step) already wrote,
+// adjust one filter, and write it back, rather than rebuilding the whole edit
+// from search and detection just to change a grade.
+func Parse(data []byte) (*Timeline, error) {
+	var t Timeline
+	if err := xml.Unmarshal(data, &t); err != nil {
+		return nil, err
+	}
+	return &t, nil
+}
+
+// Service reports the filter's mlt_service — the value that selects which MLT
+// filter this is ("crop", "subtitle", "avfilter.eq", ...). It is the stable name
+// an edit targets to add or remove a filter, and is empty when unset (a filter
+// Validate would reject).
+func (f Filter) Service() string {
+	for _, p := range f.Properties {
+		if p.Name == "mlt_service" {
+			return p.Value
+		}
+	}
+	return ""
+}
+
+// Producer returns a pointer to the producer with the given id, or nil when no
+// producer carries it. The pointer aliases the timeline's own slice, so mutating
+// what it points at edits the timeline in place.
+func (t *Timeline) Producer(id string) *Producer {
+	for i := range t.Producers {
+		if t.Producers[i].ID == id {
+			return &t.Producers[i]
+		}
+	}
+	return nil
+}
+
+// RemoveFilterService drops every filter with the given mlt_service from the
+// producer and reports how many it removed, so an edit can tell a real removal
+// from a no-op against a service the producer never carried.
+func (p *Producer) RemoveFilterService(service string) int {
+	kept := p.Filters[:0]
+	removed := 0
+	for _, f := range p.Filters {
+		if f.Service() == service {
+			removed++
+			continue
+		}
+		kept = append(kept, f)
+	}
+	p.Filters = kept
+	return removed
+}
+
 // Validate reports the structural problems that would make melt fail, so an
 // agent can fix a timeline before spending a render on it.
 func (t *Timeline) Validate() []string {
