@@ -58,6 +58,8 @@ func run(args []string, stdin io.Reader, stdout io.Writer) error {
 		return shortsCmd(args[1:], stdin, stdout)
 	case "reframe-edit":
 		return reframeCmd(args[1:], stdin, stdout)
+	case "filters":
+		return filtersCmd(args[1:], stdin, stdout)
 	case "timeline":
 		return timelineCmd(args[1:], stdin, stdout)
 	case "render":
@@ -121,6 +123,9 @@ func schemaCmd(args []string, stdout io.Writer) error {
 type timelineRequest struct {
 	Project string         `json:"project"`
 	Clips   []timelineClip `json:"clips"`
+	// Effects attach MLT filters to the timeline: either named presets or any
+	// MLT service by name. `cutvec filters` lists what this machine's MLT has.
+	Effects []effectSpec `json:"effects"`
 }
 
 // timelineClip is one media source on the timeline. Resource is required; ID
@@ -184,6 +189,16 @@ func timelineCmd(args []string, stdin io.Reader, stdout io.Writer) error {
 			id = fmt.Sprintf("producer%d", i)
 		}
 		tl.Producers = append(tl.Producers, timeline.Producer{ID: id, Resource: c.Resource})
+	}
+
+	// Effects are resolved before anything is written, so an unknown preset or a
+	// typo'd producer id fails without leaving a half-built timeline behind.
+	byProducer, err := resolveEffects(req.Effects)
+	if err != nil {
+		return err
+	}
+	if err := applyEffects(tl, byProducer); err != nil {
+		return err
 	}
 
 	proj := project.Open(req.Project)
