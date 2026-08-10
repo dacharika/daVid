@@ -15,3 +15,4 @@ every MLT timestamp cutvec writes is a valid clock melt can parse, not an out-of
 - [ ] A new table-driven test asserts Clock(59.9996)=="00:01:00.000", Clock(119.9999)=="00:02:00.000", and Clock(3599.9999)=="01:00:00.000", and the existing 0/12.5/3671.25 and negative-clamp cases still pass
 - [ ] go build ./... and go test ./... both exit 0
 ## Log
+- 2026-08-10T22:32:26Z claimed by a-fixer-z57k0n

@@ -1,2 +1,2 @@
 window_tokens: 0
-pending_land: dacli/034-shorts-rank-moments-with-rankcandidates-before-selecting-so-the-recipe-is
+pending_land: dacli/035-assets-search-rank-hits-by-descending-score-in-go-so-the-library-retrieval
