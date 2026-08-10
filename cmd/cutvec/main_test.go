@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/tahabsn/cutvec/internal/axerror"
+	"github.com/tahabsn/cutvec/internal/catalog"
 	"github.com/tahabsn/cutvec/internal/project"
 	"github.com/tahabsn/cutvec/internal/timeline"
 	"github.com/tahabsn/cutvec/internal/worker"
@@ -2146,5 +2147,59 @@ func TestDoctorInCatalog(t *testing.T) {
 	}
 	if !strings.Contains(out.String(), `"doctor"`) {
 		t.Fatal("describe --json does not list the doctor tool")
+	}
+}
+
+// TestUsageIsAccurate pins the help text an agent reads first. Help is the one
+// surface where a stale sentence is worse than no sentence: an agent that reads
+// "not yet implemented" against a working feature simply never calls it, and
+// nothing fails loudly enough to notice. Each check below corresponds to a real
+// defect found in this text, so the test fails if any of them regress.
+func TestUsageIsAccurate(t *testing.T) {
+	var help bytes.Buffer
+	// The fourth argument is the injected stderr; help must land there rather
+	// than on the process's own stderr, or it is uncapturable by an MCP host.
+	if err := run(nil, strings.NewReader(""), io.Discard, &help); err != nil {
+		t.Fatalf("usage: %v", err)
+	}
+	text := help.String()
+	if text == "" {
+		t.Fatal("usage wrote nothing to the injected stderr (it is still writing to os.Stderr)")
+	}
+
+	// The MCP server works — `mcp serve` answers initialize and tools/list, and
+	// mcp_test.go exercises it. Advertising it as unbuilt is a lie to the agent.
+	if strings.Contains(text, "not yet implemented") {
+		t.Error(`usage claims a command is "not yet implemented"; mcp serve works — see mcp_test.go`)
+	}
+	// It is reached as `mcp serve`; a bare `mcp` is an input.empty error, so the
+	// help must name the subcommand or it sends the caller into that error.
+	if !strings.Contains(text, "mcp serve") {
+		t.Error("usage does not mention `mcp serve`; bare `mcp` errors with input.empty")
+	}
+
+	// Every catalog tool must appear exactly once: the meta block above the loop
+	// used to hardcode `describe`, which the loop then printed a second time.
+	for _, tool := range catalog.Default().Tools {
+		if n := strings.Count(text, "  "+tool.Name+" "); n != 1 {
+			t.Errorf("tool %q appears %d times in usage, want exactly 1", tool.Name, n)
+		}
+	}
+
+	// The longest name is `reframe-edit` (12 chars). With a narrower field its
+	// summary is shoved out of the column, so assert the summaries line up.
+	var col = -1
+	for _, line := range strings.Split(text, "\n") {
+		for _, tool := range catalog.Default().Tools {
+			if !strings.HasPrefix(line, "  "+tool.Name+" ") {
+				continue
+			}
+			at := strings.Index(line, strings.Fields(line)[1])
+			if col == -1 {
+				col = at
+			} else if at != col {
+				t.Errorf("summary for %q starts at column %d, want %d (field too narrow for the longest name)", tool.Name, at, col)
+			}
+		}
 	}
 }
