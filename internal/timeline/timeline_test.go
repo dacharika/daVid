@@ -202,9 +202,10 @@ func TestCropWindowExpressesTheKeptRectangleAsInsets(t *testing.T) {
 			t.Errorf("%s inset = %q, want %q", tc.name, vals[tc.name], tc.want)
 		}
 	}
-	// use_profile must be absent: it makes the edges a no-op on the render melt.
+	// use_profile must be absent: these insets are already in source pixels, so
+	// declaring them profile-relative would crop the wrong region.
 	if _, ok := vals["use_profile"]; ok {
-		t.Error("CropWindow set use_profile, which reduces the explicit crop to a no-op on the render worker's melt")
+		t.Error("CropWindow set use_profile, which would read its source-pixel insets as profile pixels and crop the wrong region")
 	}
 }
 
