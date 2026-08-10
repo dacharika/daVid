@@ -3,8 +3,9 @@ id: t-01KZPF8MGWF5MVKXAY81J6RRS2
 kind: task
 created: 2026-08-10T18:34:22Z
 created_by: a-go-auditor-bhk1rs
-owner: a-go-auditor-bhk1rs
+owner: a-root
 priority: should
+estimate: "{optimistic: 1, probable: 2, pessimistic: 4}"
 ---
 # audio: stop an omitted or zero bed gain from rendering a music bed at full volume over dialogue
 ## So that
@@ -14,3 +15,4 @@ an agent that lays a music bed without naming a gain gets a bed under the dialog
 - [ ] An explicit gain of 0 behaves per the chosen design and is covered by a test — a silent bed stays 0 OR 0 is rejected with a stable axerror code plus hint — so applyAudio's accepted range, AddAudio's transform, and the catalog schema wording (catalog.go:528) no longer disagree.
 - [ ] Existing audio tests still pass (TestAudioBedAddsAMixedTrackNotAReplacement, TestAudioGainOutOfRangeIsRejected, TestAddAudio*); go build ./... and go test ./... both exit 0; gofmt clean. Out of scope: MLT mix rendering, the grade/denoise/sfx effect presets, and the hook/caption overlap (open task 029).
 ## Log
+- 2026-08-10T20:57:57Z adopted by a-root (owner a-go-auditor-bhk1rs orphaned)

@@ -23,6 +23,14 @@ for i in $(seq 1 "$N"); do
   git merge origin/main -q -m "sync main<-origin" 2>/dev/null
   for a in $(ls .dacli/agents/ 2>/dev/null | grep -oE 'a-fixer-[a-z0-9]+' | sort -u); do dacli agent retire "$a" >/dev/null 2>&1; done
 
+  # The review phase files tasks without estimates and the fixer role is capped,
+  # so an unsized task is refused every cycle forever. Estimate any unsized task
+  # before the loop runs rather than rediscovering the deadlock. --force because
+  # the auditor agent that filed it is no longer alive to size its own task.
+  for f in .dacli/projects/cutvec/tasks/open/*.md; do
+    grep -q '^estimate:' "$f" || dacli task estimate "${${f:t}%%-*}" --estimate 1,2,4 --force >/dev/null 2>&1
+  done
+
   echo "  building next task…"
   # --no-progress-halt takes an integer, and passing it as a bare flag made
   # every `dacli loop` call fail instantly — the driver looked like it was

@@ -93,3 +93,7 @@ a vertical short is watchable on a phone, which is the whole point of the format
 - 2026-08-10T19:42:25Z verified by `go build ./... && go test ./...` (exit 0)
 - 2026-08-10T19:42:25Z deliverable: no dacli/023-shorts-frame-head-and-shoulders-instead-of-full-body branch — nothing to check against trunk
 - 2026-08-10T19:42:25Z completed by a-root
+- 2026-08-10T19:48:54Z accepted by a-root
+- 2026-08-10T19:48:54Z verified by `go build ./... && go test ./...` (exit 0)
+- 2026-08-10T19:48:54Z deliverable: no dacli/023-shorts-frame-head-and-shoulders-instead-of-full-body branch — nothing to check against trunk
+- 2026-08-10T19:48:54Z completed by a-root

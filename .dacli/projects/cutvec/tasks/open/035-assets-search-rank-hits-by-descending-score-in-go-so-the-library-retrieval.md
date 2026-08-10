@@ -3,7 +3,7 @@ id: t-01KZPJNTBGAWZ5Z5S5GQ1F8DYZ
 kind: task
 created: 2026-08-10T19:34:00Z
 created_by: a-go-auditor-dpd5dj
-owner: a-go-auditor-dpd5dj
+owner: a-root
 priority: should
 estimate: "{optimistic: 1, probable: 2, pessimistic: 4}"
 ---
@@ -15,3 +15,4 @@ assets search (the SFX/b-roll retrieval half of the vector-search capability) re
 - [ ] A new Go unit test drives assetsSearchCmd with a fake search worker that returns assets OUT of Score order (e.g. score 0.2 before 0.9) and asserts out.Assets[0] is the highest-scoring hit; it fails before the fix and passes after
 - [ ] go build ./... and go test ./... both exit 0
 ## Log
+- 2026-08-10T20:57:57Z adopted by a-root (owner a-go-auditor-dpd5dj orphaned)
