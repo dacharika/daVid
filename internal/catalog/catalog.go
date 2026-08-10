@@ -448,6 +448,23 @@ func Default() Catalog {
 								},
 							},
 						},
+						"audio": map[string]any{
+							"type":        "array",
+							"description": "sounds laid under the edit as genuinely mixed MLT tracks — a music bed, a sting, room tone. Mixed, not substituted: the dialogue stays audible beneath them.",
+							"items": map[string]any{
+								"type":     "object",
+								"required": []any{"resource"},
+								"properties": map[string]any{
+									"resource": map[string]any{"type": "string", "description": "path to the sound file"},
+									"id":       map[string]any{"type": "string", "description": "producer id for this sound; defaults to audioN"},
+									"gain":     map[string]any{"type": "number", "description": "level from 0 to 1; around 0.15 sits a music bed under dialogue without fighting it"},
+									"start":    map[string]any{"type": "number", "description": "seconds into the timeline before the sound enters, so a sting can land on a moment"},
+									"fadeIn":   map[string]any{"type": "number", "description": "fade-in length in seconds"},
+									"fadeOut":  map[string]any{"type": "number", "description": "fade-out length in seconds"},
+									"effects":  map[string]any{"type": "array", "description": "effects applied to this sound alone, e.g. EQ on the bed without touching the dialogue"},
+								},
+							},
+						},
 					},
 				},
 				OutputSchema: Schema{

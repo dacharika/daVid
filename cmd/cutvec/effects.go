@@ -154,6 +154,51 @@ func applyEffects(tl *timeline.Timeline, byProducer map[string][]timeline.Filter
 	return nil
 }
 
+// --- audio beds -------------------------------------------------------------
+
+// audioSpec is a sound laid under the edit: a music bed, a sting, room tone.
+type audioSpec struct {
+	Resource string  `json:"resource"`
+	ID       string  `json:"id"`
+	Gain     float64 `json:"gain"`
+	Start    float64 `json:"start"`
+	FadeIn   float64 `json:"fadeIn"`
+	FadeOut  float64 `json:"fadeOut"`
+	// Effects apply to this sound alone — ducking or EQ on the bed without
+	// touching the dialogue.
+	Effects []effectSpec `json:"effects"`
+}
+
+// applyAudio lays each requested sound under the timeline as a mixed track.
+func applyAudio(tl *timeline.Timeline, specs []audioSpec) error {
+	for i, spec := range specs {
+		if spec.Resource == "" {
+			return axerror.New("input.invalid",
+				fmt.Sprintf("audio %d has no resource", i)).
+				WithHint("every audio entry needs a resource path to a sound file")
+		}
+		if spec.Gain < 0 || spec.Gain > 1 {
+			return axerror.New("input.invalid",
+				fmt.Sprintf("audio %d has gain %v", i, spec.Gain)).
+				WithHint("gain is a level between 0 and 1; 0.15 is a typical music bed under dialogue")
+		}
+		id := spec.ID
+		if id == "" {
+			id = fmt.Sprintf("audio%d", i)
+		}
+		byProducer, err := resolveEffects(spec.Effects)
+		if err != nil {
+			return err
+		}
+		var own []timeline.Filter
+		for _, filters := range byProducer {
+			own = append(own, filters...)
+		}
+		tl.AddAudio(id, spec.Resource, spec.Gain, spec.Start, spec.FadeIn, spec.FadeOut, own...)
+	}
+	return nil
+}
+
 // --- the filters command ----------------------------------------------------
 
 type filtersRequest struct {

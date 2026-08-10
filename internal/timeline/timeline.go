@@ -7,6 +7,7 @@ package timeline
 import (
 	"encoding/xml"
 	"fmt"
+	"strconv"
 )
 
 // Timeline is the root <mlt> element of an MLT document.
@@ -26,16 +27,38 @@ type Playlist struct {
 	Entries []Entry `xml:"entry"`
 }
 
-// Entry places a producer in a playlist.
+// Entry places a producer in a playlist. Blank is an empty span of the given
+// length instead — how MLT delays a producer's entry on its track.
 type Entry struct {
-	Producer string `xml:"producer,attr"`
+	Producer string `xml:"producer,attr,omitempty"`
+	Blank    string `xml:"length,attr,omitempty"`
 }
 
 // Tractor is an MLT <tractor>: what the consumer actually renders. A timeline
-// with a playlist needs one, naming the track to play.
+// with a playlist needs one, naming the track to play. Transitions combine
+// tracks — which is how a second audio track becomes a mix rather than a
+// replacement.
 type Tractor struct {
-	ID     string  `xml:"id,attr"`
-	Tracks []Track `xml:"track"`
+	ID          string       `xml:"id,attr"`
+	Tracks      []Track      `xml:"track"`
+	Transitions []Transition `xml:"transition"`
+}
+
+// Transition is an MLT <transition>: it combines two tracks. Like a filter, the
+// mlt_service property selects which one.
+type Transition struct {
+	ID         string     `xml:"id,attr,omitempty"`
+	Properties []Property `xml:"property"`
+}
+
+// NewTransition builds a transition for the given mlt_service with ordered
+// properties supplied as name/value pairs.
+func NewTransition(service string, kv ...string) Transition {
+	t := Transition{Properties: []Property{{Name: "mlt_service", Value: service}}}
+	for i := 0; i+1 < len(kv); i += 2 {
+		t.Properties = append(t.Properties, Property{Name: kv[i], Value: kv[i+1]})
+	}
+	return t
 }
 
 // Track names a producer or playlist the tractor plays.
@@ -52,6 +75,60 @@ func (t *Timeline) Sequence(id string) {
 	}
 	t.Playlists = []Playlist{pl}
 	t.Tractor = &Tractor{ID: id + "_tractor", Tracks: []Track{{Producer: id}}}
+}
+
+// AddAudio lays a sound under the timeline — a music bed, a sting, room tone —
+// as a genuine second track combined by MLT's `mix` transition. Mixing is the
+// whole point: without a transition the extra track would replace the dialogue
+// rather than sit beneath it.
+//
+// gain is the bed's level relative to full scale, and fadeIn/fadeOut are
+// seconds. start offsets the sound into the timeline, so a sting can land on a
+// moment rather than at the top. Filters are attached to the sound itself, so
+// any MLT audio filter applies to the bed alone.
+func (t *Timeline) AddAudio(id, resource string, gain, start, fadeIn, fadeOut float64,
+	filters ...Filter) {
+
+	if t.Tractor == nil {
+		// Audio needs something to sit under; a bare producer list has no
+		// track structure to mix into.
+		t.Sequence("main")
+	}
+	if gain <= 0 {
+		gain = 1
+	}
+
+	sound := Producer{ID: id, Resource: resource, Filters: filters}
+	if fadeIn > 0 {
+		sound.Filters = append(sound.Filters, NewFilter("fadeInVolume",
+			"in", Clock(0), "out", Clock(fadeIn), "alpha", "1"))
+	}
+	if fadeOut > 0 {
+		sound.Filters = append(sound.Filters, NewFilter("fadeOutVolume",
+			"alpha", "1", "fade_out_duration", Clock(fadeOut)))
+	}
+	t.Producers = append(t.Producers, sound)
+
+	pl := Playlist{ID: id + "_track"}
+	if start > 0 {
+		// A blank entry is how MLT delays a producer's entry on its track.
+		pl.Entries = append(pl.Entries, Entry{Blank: Clock(start)})
+	}
+	pl.Entries = append(pl.Entries, Entry{Producer: id})
+	t.Playlists = append(t.Playlists, pl)
+
+	track := len(t.Tractor.Tracks)
+	t.Tractor.Tracks = append(t.Tractor.Tracks, Track{Producer: pl.ID})
+	// sum=1 mixes the tracks together; without it the b-track crossfades over
+	// the a-track and the dialogue drops out.
+	t.Tractor.Transitions = append(t.Tractor.Transitions, NewTransition("mix",
+		"a_track", "0",
+		"b_track", strconv.Itoa(track),
+		"start", strconv.FormatFloat(gain, 'f', -1, 64),
+		"end", strconv.FormatFloat(gain, 'f', -1, 64),
+		"sum", "1",
+		"always_active", "1",
+	))
 }
 
 // Profile is MLT's <profile>: the output geometry every producer is rendered
