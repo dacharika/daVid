@@ -1295,6 +1295,141 @@ func TestRenderFailureRules(t *testing.T) {
 	}
 }
 
+// progressEvent is one JSONL line a long step writes to stderr.
+type progressEvent struct {
+	Kind  string `json:"kind"`
+	Step  string `json:"step"`
+	Phase string `json:"phase"`
+	Seq   int    `json:"seq"`
+}
+
+// assertStderrProgress parses stderr as newline-delimited progress objects and
+// asserts they belong to the named step, open with a "start" and close with a
+// "done", and carry a strictly increasing seq — the contract that lets a caller
+// tell a slow step from a hung one.
+func assertStderrProgress(t *testing.T, stderr, step string) {
+	t.Helper()
+	trimmed := strings.TrimSpace(stderr)
+	if trimmed == "" {
+		t.Fatalf("%s emitted no progress on stderr", step)
+	}
+	var evs []progressEvent
+	for _, line := range strings.Split(trimmed, "\n") {
+		if line == "" {
+			continue
+		}
+		var ev progressEvent
+		if err := json.Unmarshal([]byte(line), &ev); err != nil {
+			t.Fatalf("progress line %q is not valid JSON: %v", line, err)
+		}
+		if ev.Kind != "progress" {
+			t.Fatalf("progress line %q kind = %q, want progress", line, ev.Kind)
+		}
+		if ev.Step != step {
+			t.Fatalf("progress line %q step = %q, want %q", line, ev.Step, step)
+		}
+		evs = append(evs, ev)
+	}
+	if len(evs) < 2 {
+		t.Fatalf("%s emitted %d progress events, want at least start+done", step, len(evs))
+	}
+	if evs[0].Phase != "start" {
+		t.Fatalf("first progress phase = %q, want start", evs[0].Phase)
+	}
+	if last := evs[len(evs)-1]; last.Phase != "done" {
+		t.Fatalf("last progress phase = %q, want done", last.Phase)
+	}
+	for i, ev := range evs {
+		if ev.Seq != i {
+			t.Fatalf("progress event %d seq = %d, want %d", i, ev.Seq, i)
+		}
+	}
+}
+
+// assertOneJSONResult decodes stdout and confirms it is exactly one JSON value
+// with nothing trailing — the unchanged contract that progress on stderr must
+// not disturb.
+func assertOneJSONResult(t *testing.T, stdout string) {
+	t.Helper()
+	dec := json.NewDecoder(strings.NewReader(stdout))
+	var first any
+	if err := dec.Decode(&first); err != nil {
+		t.Fatalf("stdout is not a JSON value: %v\n%s", err, stdout)
+	}
+	if err := dec.Decode(new(any)); err != io.EOF {
+		t.Fatalf("stdout carried more than one JSON value (err=%v), want exactly one:\n%s", err, stdout)
+	}
+}
+
+// TestTranscribeEmitsProgress is acceptance #1+#2 for transcribe: the step
+// writes newline-delimited progress objects to stderr while stdout still carries
+// exactly one JSON result.
+func TestTranscribeEmitsProgress(t *testing.T) {
+	dir, _ := ingestFixture(t, "fake audio bytes")
+	wpath, wargs := transcribeWorkerEnv(t, "transcribe")
+	req := map[string]any{"worker": wpath, "workerArgs": wargs}
+	b, _ := json.Marshal(req)
+
+	var out, errBuf bytes.Buffer
+	if err := run([]string{"transcribe", dir, "--json"}, bytes.NewReader(b), &out, &errBuf); err != nil {
+		t.Fatalf("transcribe = %v, want nil", err)
+	}
+	assertOneJSONResult(t, out.String())
+	assertStderrProgress(t, errBuf.String(), "transcribe")
+}
+
+// TestSpeakersEmitsProgress is acceptance #1+#2 for speakers.
+func TestSpeakersEmitsProgress(t *testing.T) {
+	dir, _ := ingestFixture(t, "fake video bytes")
+	wpath, wargs := speakersWorkerEnv(t)
+	req := map[string]any{"worker": wpath, "workerArgs": wargs}
+	b, _ := json.Marshal(req)
+
+	var out, errBuf bytes.Buffer
+	if err := run([]string{"speakers", dir, "--json"}, bytes.NewReader(b), &out, &errBuf); err != nil {
+		t.Fatalf("speakers = %v, want nil", err)
+	}
+	assertOneJSONResult(t, out.String())
+	assertStderrProgress(t, errBuf.String(), "speakers")
+}
+
+// TestRenderEmitsProgress is acceptance #1+#2 for render.
+func TestRenderEmitsProgress(t *testing.T) {
+	dir := renderFixture(t)
+	wpath, wargs := renderWorkerEnv(t, "render")
+	req := map[string]any{"worker": wpath, "workerArgs": wargs}
+	b, _ := json.Marshal(req)
+
+	var out, errBuf bytes.Buffer
+	if err := run([]string{"render", dir, "--json"}, bytes.NewReader(b), &out, &errBuf); err != nil {
+		t.Fatalf("render = %v, want nil", err)
+	}
+	assertOneJSONResult(t, out.String())
+	assertStderrProgress(t, errBuf.String(), "render")
+}
+
+// TestCacheHitEmitsNoProgress proves progress brackets only real work: an
+// idempotent cache-hit re-run returns its JSON result on stdout and writes
+// nothing to the progress channel, so a fast re-run stays silent.
+func TestCacheHitEmitsNoProgress(t *testing.T) {
+	dir := renderFixture(t)
+	wpath, wargs := renderWorkerEnv(t, "render")
+
+	// Prime the cache with a real render (its progress goes to a discarded buffer).
+	runJSON(t, []string{"render", dir}, map[string]any{"worker": wpath, "workerArgs": wargs}, nil)
+
+	// Re-run against a worker that cannot start: a cache hit never touches it and
+	// emits no progress.
+	var out, errBuf bytes.Buffer
+	if err := run([]string{"render", dir}, strings.NewReader(`{"worker":"/nonexistent/melt"}`), &out, &errBuf); err != nil {
+		t.Fatalf("cache-hit render = %v, want nil", err)
+	}
+	assertOneJSONResult(t, out.String())
+	if strings.TrimSpace(errBuf.String()) != "" {
+		t.Fatalf("cache hit emitted progress, want none:\n%s", errBuf.String())
+	}
+}
+
 // TestTimelineFailureRules pins the written behaviour for empty and malformed
 // input: each maps to a stable, machine-branchable axerror code.
 func TestTimelineFailureRules(t *testing.T) {

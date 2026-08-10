@@ -23,3 +23,7 @@ an agent gets timecoded words to search and to build captions
 - 2026-08-10T16:55:00Z verified by `go build ./... && go test ./...` (exit 0)
 - 2026-08-10T16:55:00Z deliverable: no dacli/011-transcribe-command-word-level-transcript-via-whisper-worker-cached branch — nothing to check against trunk
 - 2026-08-10T16:55:00Z completed by a-root
+- 2026-08-10T17:20:45Z accepted by a-root
+- 2026-08-10T17:20:45Z verified by `go build ./... && go test ./...` (exit 0)
+- 2026-08-10T17:20:45Z deliverable: no dacli/011-transcribe-command-word-level-transcript-via-whisper-worker-cached branch — nothing to check against trunk
+- 2026-08-10T17:20:45Z completed by a-root

@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"os"
 	"strings"
 
 	"github.com/tahabsn/cutvec/internal/axerror"
@@ -226,8 +227,11 @@ func callTool(name string, arguments json.RawMessage) mcpCallResult {
 		}
 	}
 
+	// stdout is captured so the tool's single JSON result comes back as MCP
+	// content; progress rides the server's real stderr (its log channel), never
+	// the JSON-RPC stream on stdout.
 	var out bytes.Buffer
-	if err := run(args, bytes.NewReader(body), &out); err != nil {
+	if err := run(args, bytes.NewReader(body), &out, os.Stderr); err != nil {
 		ae, ok := err.(*axerror.Error)
 		if !ok {
 			ae = axerror.New("internal", err.Error())

@@ -14,3 +14,5 @@ a missing tool, model or package is reported before a pipeline spends minutes fa
 - [ ] cutvec doctor --json reports every worker, binary, model and python package with ok/missing and an actionable hint
 - [ ] it exits non-zero when anything required is missing, and never starts real work
 ## Log
+- 2026-08-10T17:20:50Z claimed by a-fixer-xrt529
+- 2026-08-10T17:30:38Z a-fixer-xrt529: PR opened: https://github.com/mlnomadpy/cutvec/pull/27 (event 01KZPBK5BHBZ0W2TGPXGYC8MTX)
