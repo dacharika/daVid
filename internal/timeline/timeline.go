@@ -211,21 +211,19 @@ func NewFilter(service string, kv ...string) Filter {
 	return f
 }
 
-// CropRect builds the qtcrop filter that reframes a landscape source to the
-// timeline's profile by keeping the given source-pixel rectangle.
-func CropRect(x, y, w, h int) Filter {
-	return NewFilter("qtcrop", "rect", fmt.Sprintf("%d %d %d %d", x, y, w, h))
-}
-
 // CropWindow builds the filter that keeps a source-pixel rectangle (x,y,w,h) of a
 // srcW×srcH source and scales what remains to fill the profile. It is expressed
 // as edge insets in source pixels — the coordinate space MLT's crop filter reads
 // — so a window whose aspect matches the profile fills the frame with no bars,
 // which is what makes a real head-and-shoulders reframe rather than a padded one.
 //
-// This is deliberately the plain "crop" service, not "qtcrop" and not the
-// use_profile edge form: only this shape was observed to crop-and-fill against
-// the melt build the render worker drives; the others render black or no-op.
+// This is deliberately the plain "crop" service, not "qtcrop" (which renders
+// black against the melt build the render worker drives). It omits use_profile
+// on purpose: the insets are already in source pixels, so declaring them
+// profile-relative would crop the wrong region. use_profile itself is a valid
+// crop-and-fill form — PunchIn uses it — so this is a coordinate-space choice,
+// not a workaround for a broken filter. The real black-render hazard is
+// combining center=1 with explicit edges, which pads to black.
 func CropWindow(srcW, srcH, x, y, w, h int) Filter {
 	right := srcW - x - w
 	if right < 0 {
