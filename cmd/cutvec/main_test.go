@@ -127,6 +127,15 @@ func TestHelperProcess(t *testing.T) {
 		out, _ := json.Marshal(resp)
 		os.Stdout.Write(out)
 		os.Exit(0)
+	case "render-partial":
+		// Stand in for a melt that dies mid-encode: write truncated bytes to the
+		// requested output path, then exit non-zero. Exercises that the Go side
+		// never publishes a crashed worker's partial output onto the cache path.
+		outPath, _ := req.Params["output"].(string)
+		if outPath != "" {
+			_ = os.WriteFile(outPath, []byte("partial"), 0o644)
+		}
+		os.Exit(1)
 	}
 	os.Exit(0)
 }
@@ -1265,6 +1274,48 @@ func TestRenderCacheHitIdempotent(t *testing.T) {
 	}
 	if second.Output != first.Output || second.Source != first.Source {
 		t.Fatalf("cache hit changed the handle: first %+v second %+v", first, second)
+	}
+}
+
+// TestRenderPartialWriteDoesNotPoisonCache asserts render publishes atomically: a
+// worker that writes partial bytes then dies non-zero must leave NO file at the
+// cache path, so the next resumed run re-renders instead of returning a truncated
+// mp4 as a completed cache hit. The first render errors and HasRender stays false;
+// a second render with a working worker is a cache miss that writes the complete
+// output.
+func TestRenderPartialWriteDoesNotPoisonCache(t *testing.T) {
+	dir := renderFixture(t)
+
+	// Resolve the cache key the same way render does: hash the built timeline.
+	proj := project.Open(dir)
+	hash, err := project.HashFile(proj.TimelinePath())
+	if err != nil {
+		t.Fatalf("hash timeline: %v", err)
+	}
+
+	// First render: a melt that dies mid-encode after writing truncated bytes.
+	wpath, wargs := renderWorkerEnv(t, "render-partial")
+	req, _ := json.Marshal(map[string]any{"worker": wpath, "workerArgs": wargs})
+	if err := run([]string{"render", dir}, bytes.NewReader(req), io.Discard); err == nil {
+		t.Fatal("partial render err = nil, want a worker failure")
+	}
+	if proj.HasRender(hash, "proxy") {
+		t.Fatal("HasRender = true after a crashed render, want false (partial output must not poison the cache)")
+	}
+	if _, err := os.Stat(proj.RenderPath(hash, "proxy") + ".tmp"); !os.IsNotExist(err) {
+		t.Fatalf("temp render survived a crash (stat err = %v), want it removed", err)
+	}
+
+	// Second render with a working worker: a cache miss that re-renders and writes
+	// the complete output, proving the poisoned first run left nothing behind.
+	var second renderReply
+	wpath, wargs = renderWorkerEnv(t, "render")
+	runJSON(t, []string{"render", dir}, map[string]any{"worker": wpath, "workerArgs": wargs}, &second)
+	if second.Cached {
+		t.Fatal("second render cached = true, want false (the crashed first run must not count as a hit)")
+	}
+	if b, err := os.ReadFile(second.Output); err != nil || string(b) != "fake rendered video" {
+		t.Fatalf("output = %q err = %v, want the complete rendered file", b, err)
 	}
 }
 
