@@ -1701,3 +1701,135 @@ func TestSearchFailureRules(t *testing.T) {
 		})
 	}
 }
+
+// doctorReport mirrors the doctor tool's JSON output for assertions.
+type doctorReport struct {
+	Ok              bool `json:"ok"`
+	Missing         int  `json:"missing"`
+	RequiredMissing int  `json:"requiredMissing"`
+	MissingNames    []string
+	Checks          []struct {
+		Name, Kind, Status, Detail, Hint string
+		Required                         bool
+	}
+}
+
+// TestDoctorReportsEveryKind proves `cutvec doctor --json` emits a structured
+// preflight covering every dependency class (binary, worker, package, model),
+// each with an ok/missing status, and that every missing check carries a hint.
+// The report is produced regardless of what the host actually has installed.
+func TestDoctorReportsEveryKind(t *testing.T) {
+	var out bytes.Buffer
+	err := run([]string{"doctor", "--json"}, strings.NewReader(""), &out)
+
+	var rep doctorReport
+	if jerr := json.Unmarshal(out.Bytes(), &rep); jerr != nil {
+		t.Fatalf("doctor did not emit valid JSON: %v\n%s", jerr, out.String())
+	}
+	if len(rep.Checks) == 0 {
+		t.Fatal("doctor reported no checks")
+	}
+	kinds := map[string]bool{}
+	for _, c := range rep.Checks {
+		kinds[c.Kind] = true
+		if c.Status != "ok" && c.Status != "missing" {
+			t.Errorf("%s: status = %q, want ok|missing", c.Name, c.Status)
+		}
+		if c.Status == "missing" && c.Hint == "" {
+			t.Errorf("%s is missing but carries no hint", c.Name)
+		}
+	}
+	for _, want := range []string{"binary", "worker", "package", "model"} {
+		if !kinds[want] {
+			t.Errorf("report has no %q check", want)
+		}
+	}
+	// The report and the process exit signal must agree: a failed preflight is
+	// reported ok:false AND returned as a structured error (non-zero exit).
+	var ae *axerror.Error
+	if rep.Ok {
+		if err != nil {
+			t.Fatalf("ok report but run returned %v", err)
+		}
+	} else {
+		if !errors.As(err, &ae) {
+			t.Fatalf("not-ok report but run returned %v, want *axerror.Error", err)
+		}
+		if ae.Code != "doctor.preflight_failed" {
+			t.Fatalf("code = %q, want doctor.preflight_failed", ae.Code)
+		}
+	}
+}
+
+// TestDoctorFailsWhenRequiredMissing forces a required dependency to be missing
+// (the melt worker's env var is cleared) and asserts doctor never starts real
+// work, still emits the full report on stdout, and exits non-zero with a
+// structured error naming the gap.
+func TestDoctorFailsWhenRequiredMissing(t *testing.T) {
+	// Clear every worker env var so the worker checks deterministically miss,
+	// independent of the host's binaries/packages/models.
+	for _, e := range []string{
+		"CUTVEC_FFMPEG_WORKER", "CUTVEC_WHISPER_WORKER", "CUTVEC_INDEX_WORKER",
+		"CUTVEC_SEARCH_WORKER", "CUTVEC_MEDIAPIPE_WORKER", "CUTVEC_MELT_WORKER",
+	} {
+		t.Setenv(e, "")
+	}
+
+	var out bytes.Buffer
+	err := run([]string{"doctor"}, strings.NewReader(""), &out)
+
+	var ae *axerror.Error
+	if !errors.As(err, &ae) {
+		t.Fatalf("err = %v, want *axerror.Error", err)
+	}
+	if ae.Code != "doctor.preflight_failed" {
+		t.Fatalf("code = %q, want doctor.preflight_failed", ae.Code)
+	}
+	// The report is still emitted on stdout so the caller sees every gap.
+	var rep doctorReport
+	if jerr := json.Unmarshal(out.Bytes(), &rep); jerr != nil {
+		t.Fatalf("doctor emitted no report on failure: %v", jerr)
+	}
+	if rep.Ok {
+		t.Fatal("report ok:true despite missing workers")
+	}
+	if rep.RequiredMissing < 6 {
+		t.Fatalf("requiredMissing = %d, want >= 6 (the workers)", rep.RequiredMissing)
+	}
+	found := false
+	for _, c := range rep.Checks {
+		if c.Name == "melt worker" {
+			found = true
+			if c.Status != "missing" {
+				t.Fatalf("melt worker status = %q, want missing", c.Status)
+			}
+		}
+	}
+	if !found {
+		t.Fatal("no 'melt worker' check in the report")
+	}
+}
+
+// TestDoctorRejectsUnknownFlag pins the CLI failure rule for a bad flag.
+func TestDoctorRejectsUnknownFlag(t *testing.T) {
+	err := run([]string{"doctor", "--bogus"}, strings.NewReader(""), io.Discard)
+	var ae *axerror.Error
+	if !errors.As(err, &ae) {
+		t.Fatalf("err = %v, want *axerror.Error", err)
+	}
+	if ae.Code != "cli.unknown_flag" {
+		t.Fatalf("code = %q, want cli.unknown_flag", ae.Code)
+	}
+}
+
+// TestDoctorInCatalog proves the tool is discoverable on both surfaces via the
+// shared catalog.
+func TestDoctorInCatalog(t *testing.T) {
+	var out bytes.Buffer
+	if err := run([]string{"describe", "--json"}, strings.NewReader(""), &out); err != nil {
+		t.Fatalf("describe: %v", err)
+	}
+	if !strings.Contains(out.String(), `"doctor"`) {
+		t.Fatal("describe --json does not list the doctor tool")
+	}
+}
