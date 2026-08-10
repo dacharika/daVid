@@ -21,30 +21,32 @@ Analysis runs on a small grayscale-friendly proxy, not the source resolution.
 The landmarker model is found via CUTVEC_FACE_LANDMARKER or the usual install
 locations.
 """
+
 from __future__ import annotations
 
 import os
 import tempfile
 from pathlib import Path
 
-from cutvec_worker import (WorkerError, log, need, require_module, require_tool,
-                           run_tool, serve)
+from cutvec_worker import WorkerError, log, need, require_module, require_tool, run_tool, serve
 
-PROXY_W, PROXY_FPS = 960, 15      # analysis resolution / rate
-UPSCALE = 2                        # half-crop upscale before detection
-WIN_SEC = 0.73                     # rolling window for the motion signal
-TALK_THRESH = 0.006                # min jawOpen std to count as talking
-BOTH_RATIO = 1.35                  # winner must beat loser by this ratio
-MIN_TURN_SEC = 1.8                 # never emit a turn shorter than this
-BRIDGE_SEC = 3.5                   # bridge dropouts shorter than this
+PROXY_W, PROXY_FPS = 960, 15  # analysis resolution / rate
+UPSCALE = 2  # half-crop upscale before detection
+WIN_SEC = 0.73  # rolling window for the motion signal
+TALK_THRESH = 0.006  # min jawOpen std to count as talking
+BOTH_RATIO = 1.35  # winner must beat loser by this ratio
+MIN_TURN_SEC = 1.8  # never emit a turn shorter than this
+BRIDGE_SEC = 3.5  # bridge dropouts shorter than this
 
 MODEL_CANDIDATES = [
     Path.home() / "Downloads/podcast_edit/models/face_landmarker.task",
     Path.home() / "Library/Application Support/cutvec/models/face_landmarker.task",
     Path(__file__).resolve().parent / "models/face_landmarker.task",
 ]
-MODEL_URL = ("https://storage.googleapis.com/mediapipe-models/face_landmarker/"
-             "face_landmarker/float16/1/face_landmarker.task")
+MODEL_URL = (
+    "https://storage.googleapis.com/mediapipe-models/face_landmarker/"
+    "face_landmarker/float16/1/face_landmarker.task"
+)
 
 
 def find_model() -> str:
@@ -63,9 +65,21 @@ def find_model() -> str:
 
 def build_proxy(ffmpeg: str, source: str, dest: str) -> None:
     run_tool(
-        [ffmpeg, "-nostdin", "-y", "-i", source,
-         "-vf", f"scale={PROXY_W}:-2,fps={PROXY_FPS}",
-         "-an", "-c:v", "mjpeg", "-q:v", "6", dest],
+        [
+            ffmpeg,
+            "-nostdin",
+            "-y",
+            "-i",
+            source,
+            "-vf",
+            f"scale={PROXY_W}:-2,fps={PROXY_FPS}",
+            "-an",
+            "-c:v",
+            "mjpeg",
+            "-q:v",
+            "6",
+            dest,
+        ],
         "ffmpeg proxy build",
     )
 
@@ -109,10 +123,8 @@ def detect_signals(video: str, model: str):
 
     def measure(crop, x_offset):
         """jawOpen plus the face's centre in whole-frame normalised coords."""
-        big = cv2.resize(crop, None, fx=UPSCALE, fy=UPSCALE,
-                         interpolation=cv2.INTER_LINEAR)
-        img = mp.Image(image_format=mp.ImageFormat.SRGB,
-                       data=cv2.cvtColor(big, cv2.COLOR_BGR2RGB))
+        big = cv2.resize(crop, None, fx=UPSCALE, fy=UPSCALE, interpolation=cv2.INTER_LINEAR)
+        img = mp.Image(image_format=mp.ImageFormat.SRGB, data=cv2.cvtColor(big, cv2.COLOR_BGR2RGB))
         res = landmarker.detect(img)
         if not res.face_landmarks:
             return np.nan, np.nan, np.nan
@@ -123,8 +135,9 @@ def detect_signals(video: str, model: str):
         cy = float(np.mean([p.y for p in lms]))
         jaw = np.nan
         if res.face_blendshapes:
-            jaw = next((c.score for c in res.face_blendshapes[0]
-                        if c.category_name == "jawOpen"), np.nan)
+            jaw = next(
+                (c.score for c in res.face_blendshapes[0] if c.category_name == "jawOpen"), np.nan
+            )
         return jaw, cx, cy
 
     left, right, i = [], [], 0
@@ -148,7 +161,8 @@ def detect_signals(video: str, model: str):
     landmarker.close()
     if i == 0:
         raise WorkerError(
-            "input.invalid", "no frames could be read from the media",
+            "input.invalid",
+            "no frames could be read from the media",
             hint="check that the source is a readable video file",
         )
     log(f"analysed {i} frames at {fps:.2f} fps")
@@ -183,7 +197,9 @@ def turns_from_signals(left, right, fps: float) -> list[dict]:
     sig_r = rolling_std(right, max(3, int(WIN_SEC * fps)))
 
     labels = []
-    for a, b in zip(sig_l, sig_r):
+    # strict: the two signals are per-frame and must be the same length; a
+    # mismatch would silently shorten the analysed span.
+    for a, b in zip(sig_l, sig_r, strict=True):
         a = a if np.isfinite(a) else 0.0
         b = b if np.isfinite(b) else 0.0
         l_on, r_on = a > TALK_THRESH, b > TALK_THRESH
@@ -217,13 +233,10 @@ def turns_from_signals(left, right, fps: float) -> list[dict]:
         if who is None or (b - a) < min_frames:
             continue
         # extend a contiguous run of the same speaker rather than fragmenting it
-        if turns and turns[-1]["speaker"] == who and \
-                abs(turns[-1]["end"] - a / fps) < 1e-6:
+        if turns and turns[-1]["speaker"] == who and abs(turns[-1]["end"] - a / fps) < 1e-6:
             turns[-1]["end"] = round(b / fps, 3)
         else:
-            turns.append({"speaker": who,
-                          "start": round(a / fps, 3),
-                          "end": round(b / fps, 3)})
+            turns.append({"speaker": who, "start": round(a / fps, 3), "end": round(b / fps, 3)})
     return turns
 
 
@@ -232,12 +245,14 @@ def handle(params: dict) -> dict:
     layout = params.get("layout") or "two-person"
     if layout != "two-person":
         raise WorkerError(
-            "input.invalid", f"unsupported layout {layout!r}",
+            "input.invalid",
+            f"unsupported layout {layout!r}",
             hint="this worker analyses the fixed 'two-person' side-by-side layout",
         )
     if not Path(source).exists():
         raise WorkerError(
-            "input.invalid", f"source does not exist: {source}",
+            "input.invalid",
+            f"source does not exist: {source}",
             hint="ingest the media first, then run speakers",
         )
     ffmpeg = require_tool("ffmpeg", "brew install ffmpeg")
@@ -271,12 +286,17 @@ def handle(params: dict) -> dict:
     if duration > 0:
         coverage["attributedFraction"] = round(attributed / duration, 4)
 
-    log(f"{len(turns)} turns · left {talk['left']:.0f}s · right {talk['right']:.0f}s "
+    log(
+        f"{len(turns)} turns · left {talk['left']:.0f}s · right {talk['right']:.0f}s "
         f"· unattributed {coverage['unattributed']:.0f}s "
-        f"({100 * (1 - attributed / duration):.0f}%)" if duration else "")
+        f"({100 * (1 - attributed / duration):.0f}%)"
+        if duration
+        else ""
+    )
     for seat, pos in seats.items():
-        log(f"  {seat} seat at x={pos['cx']:.3f} y={pos['cy']:.3f} "
-            f"({pos['detections']} detections)")
+        log(
+            f"  {seat} seat at x={pos['cx']:.3f} y={pos['cy']:.3f} ({pos['detections']} detections)"
+        )
     return {"layout": layout, "turns": turns, "seats": seats, "coverage": coverage}
 
 

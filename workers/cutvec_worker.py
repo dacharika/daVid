@@ -11,6 +11,7 @@ one Response JSON document on stdout.
 Workers must keep stdout clean — anything printed there that is not the single
 Response is a protocol violation, so all logging goes to stderr.
 """
+
 from __future__ import annotations
 
 import json
@@ -122,7 +123,8 @@ def _serve(handlers: dict) -> None:
             req = json.loads(raw) if raw.strip() else {}
         except json.JSONDecodeError as exc:
             raise WorkerError(
-                "worker.protocol", f"request is not valid JSON: {exc}",
+                "worker.protocol",
+                f"request is not valid JSON: {exc}",
                 hint="the core must write exactly one JSON Request to stdin",
             ) from exc
 
@@ -140,8 +142,9 @@ def _serve(handlers: dict) -> None:
             raise WorkerError(
                 "input.invalid",
                 f"this worker handles {', '.join(repr(k) for k in known)}, got {got_op!r}",
-                hint=f"invoke a worker that implements {got_op!r}" if got_op
-                     else f'set "op" to one of: {", ".join(known)}',
+                hint=f"invoke a worker that implements {got_op!r}"
+                if got_op
+                else f'set "op" to one of: {", ".join(known)}',
             )
 
         result = handler(req.get("params") or {})

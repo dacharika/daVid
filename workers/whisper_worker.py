@@ -13,6 +13,7 @@ Model lookup order: CUTVEC_WHISPER_MODEL, then the ggml models podcli/whisper.cp
 commonly install under ~/Library/Application Support/podcli/models and
 /opt/homebrew/share/whisper-cpp.
 """
+
 from __future__ import annotations
 
 import json
@@ -20,8 +21,7 @@ import os
 import tempfile
 from pathlib import Path
 
-from cutvec_worker import (WorkerError, log, need, require_tool, run_tool,
-                           serve)
+from cutvec_worker import WorkerError, log, need, require_tool, run_tool, serve
 
 MODEL_CANDIDATES = [
     Path.home() / "Library/Application Support/podcli/models/ggml-base.bin",
@@ -47,15 +47,28 @@ def find_model() -> str:
         "worker.missing",
         "no ggml whisper model found",
         hint="set CUTVEC_WHISPER_MODEL to a ggml-*.bin, e.g. from "
-             "https://huggingface.co/ggerganov/whisper.cpp",
+        "https://huggingface.co/ggerganov/whisper.cpp",
     )
 
 
 def to_wav16k(ffmpeg: str, source: str, dest: str) -> None:
     """Decode any media to the 16 kHz mono PCM whisper.cpp requires."""
     run_tool(
-        [ffmpeg, "-nostdin", "-y", "-i", source,
-         "-vn", "-ac", "1", "-ar", "16000", "-c:a", "pcm_s16le", dest],
+        [
+            ffmpeg,
+            "-nostdin",
+            "-y",
+            "-i",
+            source,
+            "-vn",
+            "-ac",
+            "1",
+            "-ar",
+            "16000",
+            "-c:a",
+            "pcm_s16le",
+            dest,
+        ],
         "ffmpeg audio decode",
     )
 
@@ -81,7 +94,8 @@ def handle(params: dict) -> dict:
     source = need(params, "source")
     if not Path(source).exists():
         raise WorkerError(
-            "input.invalid", f"source does not exist: {source}",
+            "input.invalid",
+            f"source does not exist: {source}",
             hint="ingest the media first, then transcribe",
         )
     ffmpeg = require_tool("ffmpeg", "brew install ffmpeg")
@@ -99,16 +113,27 @@ def handle(params: dict) -> dict:
         out_prefix = os.path.join(tmp, "out")
         log(f"transcribing with whisper.cpp model={Path(model).name}")
         run_tool(
-            [whisper, "-m", model, "-f", wav,
-             "-ml", "1",          # one word per segment -> word-level timing
-             "-oj", "-of", out_prefix,
-             "-np", "-pp"],       # no prints / no progress on stdout
+            [
+                whisper,
+                "-m",
+                model,
+                "-f",
+                wav,
+                "-ml",
+                "1",  # one word per segment -> word-level timing
+                "-oj",
+                "-of",
+                out_prefix,
+                "-np",
+                "-pp",
+            ],  # no prints / no progress on stdout
             "whisper-cli transcription",
         )
         json_path = out_prefix + ".json"
         if not Path(json_path).exists():
             raise WorkerError(
-                "worker.protocol", "whisper-cli did not write its JSON output",
+                "worker.protocol",
+                "whisper-cli did not write its JSON output",
                 hint="check the whisper-cli invocation and model file",
                 retryable=True,
             )
@@ -117,7 +142,8 @@ def handle(params: dict) -> dict:
     words, language, text = words_from_whisper_json(doc)
     if not words:
         raise WorkerError(
-            "worker.empty", "transcription produced no words",
+            "worker.empty",
+            "transcription produced no words",
             hint="check that the media actually contains speech",
         )
     log(f"transcribed {len(words)} words, language={language or 'unknown'}")

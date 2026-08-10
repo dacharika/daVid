@@ -23,14 +23,14 @@ commands write, so what renders is exactly what `timeline inspect` showed.
 it returns success — the core checks this and treats a missing file as a
 protocol violation.
 """
+
 from __future__ import annotations
 
 import os
 import subprocess
 from pathlib import Path
 
-from cutvec_worker import (WorkerError, log, need, require_tool, run_tool,
-                           serve_ops)
+from cutvec_worker import WorkerError, log, need, require_tool, run_tool, serve_ops
 
 PROFILES = {
     # (video codec args) — melt's avformat consumer takes ffmpeg-style options
@@ -80,19 +80,23 @@ def handle_filters(params: dict) -> dict:
         if name not in everything:
             near = [n for n in everything if query or name.lower() in n.lower()][:8]
             raise WorkerError(
-                "filter.unknown", f"MLT has no filter named {name!r}",
-                hint=("closest names: " + ", ".join(near)) if near
-                     else "call filters with a query to search the registry",
+                "filter.unknown",
+                f"MLT has no filter named {name!r}",
+                hint=("closest names: " + ", ".join(near))
+                if near
+                else "call filters with a query to search the registry",
             )
-        return {"filters": [describe_filter(melt, name)], "count": 1,
-                "total": len(everything)}
+        return {"filters": [describe_filter(melt, name)], "count": 1, "total": len(everything)}
 
     matches = [n for n in everything if query in n.lower()] if query else everything
     truncated = matches[:limit]
     # Parameters are only expanded for a focused result set: describing several
     # hundred filters would cost an agent far more tokens than it can use.
-    detailed = [describe_filter(melt, n) for n in truncated] if len(truncated) <= 12 \
+    detailed = (
+        [describe_filter(melt, n) for n in truncated]
+        if len(truncated) <= 12
         else [{"name": n, "description": "", "params": []} for n in truncated]
+    )
     log(f"filters: {len(matches)} match of {len(everything)}; returning {len(detailed)}")
     return {"filters": detailed, "count": len(matches), "total": len(everything)}
 
@@ -104,12 +108,14 @@ def handle_render(params: dict) -> dict:
 
     if quality not in PROFILES:
         raise WorkerError(
-            "input.invalid", f"unknown quality {quality!r}",
+            "input.invalid",
+            f"unknown quality {quality!r}",
             hint="quality must be 'proxy' or 'final'",
         )
     if not Path(timeline).exists():
         raise WorkerError(
-            "input.invalid", f"timeline does not exist: {timeline}",
+            "input.invalid",
+            f"timeline does not exist: {timeline}",
             hint="build a timeline with `cutvec timeline` before rendering",
         )
     melt = require_tool(
@@ -118,14 +124,14 @@ def handle_render(params: dict) -> dict:
     )
     Path(output).parent.mkdir(parents=True, exist_ok=True)
 
-    argv = [melt, "-progress2", timeline,
-            "-consumer", f"avformat:{output}"] + PROFILES[quality]
+    argv = [melt, "-progress2", timeline, "-consumer", f"avformat:{output}"] + PROFILES[quality]
     log(f"rendering {Path(timeline).name} -> {output} ({quality})")
     run_tool(argv, "melt render")
 
     if not Path(output).exists():
         raise WorkerError(
-            "worker.protocol", "melt reported success but wrote no output file",
+            "worker.protocol",
+            "melt reported success but wrote no output file",
             hint="check the timeline's producers resolve to readable media",
             retryable=True,
         )
