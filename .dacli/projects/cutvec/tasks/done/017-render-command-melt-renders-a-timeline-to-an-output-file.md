@@ -103,3 +103,7 @@ a composed timeline becomes a real video deterministically
 - 2026-08-10T21:08:22Z verified by `go build ./... && go test ./...` (exit 0)
 - 2026-08-10T21:08:22Z deliverable: no dacli/017-render-command-melt-renders-a-timeline-to-an-output-file branch — nothing to check against main
 - 2026-08-10T21:08:22Z completed by a-root
+- 2026-08-10T21:20:08Z accepted by a-root
+- 2026-08-10T21:20:08Z verified by `go build ./... && go test ./...` (exit 0)
+- 2026-08-10T21:20:08Z deliverable: no dacli/017-render-command-melt-renders-a-timeline-to-an-output-file branch — nothing to check against main
+- 2026-08-10T21:20:08Z completed by a-root
