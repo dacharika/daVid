@@ -64,6 +64,107 @@ func TestBuildSRTLeadsWithTheHook(t *testing.T) {
 	if !strings.HasPrefix(srt, "1\n00:00:00,000") || !strings.Contains(srt, "WHY DOES THIS MATTER?") {
 		t.Fatalf("hook is not the opening cue:\n%s", srt)
 	}
+	// The hook must stand alone: the first spoken word begins at clip zero, well
+	// before the hook ends, yet no caption cue may overlap the hook card.
+	cues := parseSRTCues(t, srt)
+	assertNoCueOverlap(t, cues)
+	if len(cues) == 0 || cues[0].text != "WHY DOES THIS MATTER?" {
+		t.Fatalf("hook is not the opening cue:\n%s", srt)
+	}
+}
+
+// A hook card and a caption cue must never render stacked: even when the first
+// spoken word begins before the 2.5s hook ends, the captions are pushed clear.
+func TestBuildSRTHookNeverOverlapsFirstCaption(t *testing.T) {
+	tr := project.Transcript{Words: []project.Word{
+		{Word: "starts", Start: 0.5, End: 1.0}, // begins well inside the hook window
+		{Word: "during", Start: 1.0, End: 1.8},
+		{Word: "hook", Start: 1.8, End: 2.2},
+		{Word: "after", Start: 3.0, End: 3.5},
+	}}
+	srt := buildSRT(tr, 0, 5, "Watch this")
+	cues := parseSRTCues(t, srt)
+	assertNoCueOverlap(t, cues)
+	if len(cues) == 0 || cues[0].text != "WATCH THIS" {
+		t.Fatalf("hook is not the opening cue:\n%s", srt)
+	}
+	// The first caption must begin no earlier than the hook's end.
+	if cues[1].start < 2.5 {
+		t.Fatalf("first caption starts at %.3fs, inside the [0,2.5) hook window:\n%s", cues[1].start, srt)
+	}
+}
+
+// The non-overlap guarantee holds with no hook too: consecutive caption cues
+// must not overlap each other.
+func TestBuildSRTCaptionsDoNotOverlapWithoutHook(t *testing.T) {
+	tr := project.Transcript{Words: []project.Word{
+		{Word: "one", Start: 10, End: 10.4},
+		{Word: "two", Start: 10.4, End: 10.8},
+		{Word: "three", Start: 10.8, End: 11.2},
+		{Word: "four", Start: 11.2, End: 11.6},
+		{Word: "five", Start: 11.6, End: 12.0},
+		{Word: "six", Start: 12.0, End: 12.4},
+	}}
+	srt := buildSRT(tr, 10, 13, "")
+	assertNoCueOverlap(t, parseSRTCues(t, srt))
+}
+
+type srtCue struct {
+	start, end float64
+	text       string
+}
+
+// parseSRTCues turns buildSRT's output back into ordered cues so a test can
+// reason about their spans rather than string-matching timestamps.
+func parseSRTCues(t *testing.T, srt string) []srtCue {
+	t.Helper()
+	var cues []srtCue
+	for _, block := range strings.Split(strings.TrimSpace(srt), "\n\n") {
+		lines := strings.Split(strings.TrimSpace(block), "\n")
+		if len(lines) < 3 {
+			t.Fatalf("malformed SRT block %q in:\n%s", block, srt)
+		}
+		times := strings.Split(lines[1], " --> ")
+		if len(times) != 2 {
+			t.Fatalf("malformed timing line %q in:\n%s", lines[1], srt)
+		}
+		cues = append(cues, srtCue{
+			start: parseSRTTime(t, times[0]),
+			end:   parseSRTTime(t, times[1]),
+			text:  strings.Join(lines[2:], "\n"),
+		})
+	}
+	return cues
+}
+
+// parseSRTTime converts an "HH:MM:SS,mmm" stamp back to seconds.
+func parseSRTTime(t *testing.T, s string) float64 {
+	t.Helper()
+	s = strings.TrimSpace(s)
+	hms, ms, ok := strings.Cut(s, ",")
+	if !ok {
+		t.Fatalf("timestamp %q missing the ,millis separator", s)
+	}
+	parts := strings.Split(hms, ":")
+	if len(parts) != 3 {
+		t.Fatalf("timestamp %q is not HH:MM:SS", s)
+	}
+	h, _ := strconv.Atoi(parts[0])
+	m, _ := strconv.Atoi(parts[1])
+	sec, _ := strconv.Atoi(parts[2])
+	milli, _ := strconv.Atoi(ms)
+	return float64(h*3600+m*60+sec) + float64(milli)/1000
+}
+
+// assertNoCueOverlap fails if any consecutive pair of cue spans overlaps.
+func assertNoCueOverlap(t *testing.T, cues []srtCue) {
+	t.Helper()
+	for i := 1; i < len(cues); i++ {
+		if cues[i].start < cues[i-1].end {
+			t.Fatalf("cue %d [%0.3f,%0.3f) overlaps cue %d [%0.3f,%0.3f)",
+				i, cues[i].start, cues[i].end, i-1, cues[i-1].start, cues[i-1].end)
+		}
+	}
 }
 
 // The composed timeline is what melt renders, so its shape is the contract:
