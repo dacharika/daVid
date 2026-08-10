@@ -47,3 +47,35 @@ an agent can discover every command and its typed IO, and the same catalog backs
 - 2026-08-10T17:56:22Z verified by `go build ./... && go test ./...` (exit 0)
 - 2026-08-10T17:56:22Z deliverable: dacli/007-describe-schema-commands-emit-the-tool-catalog-with-json-schemas is merged into trunk
 - 2026-08-10T17:56:22Z completed by a-root
+- 2026-08-10T18:10:46Z accepted by a-root
+- 2026-08-10T18:10:46Z verified by `go build ./... && go test ./...` (exit 0)
+- 2026-08-10T18:10:46Z deliverable: dacli/007-describe-schema-commands-emit-the-tool-catalog-with-json-schemas is merged into trunk
+- 2026-08-10T18:10:46Z completed by a-root
+- 2026-08-10T18:19:13Z accepted by a-root
+- 2026-08-10T18:19:13Z verified by `go build ./... && go test ./...` (exit 0)
+- 2026-08-10T18:19:13Z deliverable: dacli/007-describe-schema-commands-emit-the-tool-catalog-with-json-schemas is merged into trunk
+- 2026-08-10T18:19:13Z completed by a-root
+- 2026-08-10T18:25:55Z accepted by a-root
+- 2026-08-10T18:25:55Z verified by `go build ./... && go test ./...` (exit 0)
+- 2026-08-10T18:25:55Z deliverable: dacli/007-describe-schema-commands-emit-the-tool-catalog-with-json-schemas is merged into trunk
+- 2026-08-10T18:25:55Z completed by a-root
+- 2026-08-10T18:36:05Z accepted by a-root
+- 2026-08-10T18:36:05Z verified by `go build ./... && go test ./...` (exit 0)
+- 2026-08-10T18:36:05Z deliverable: dacli/007-describe-schema-commands-emit-the-tool-catalog-with-json-schemas is merged into trunk
+- 2026-08-10T18:36:05Z completed by a-root
+- 2026-08-10T18:42:35Z accepted by a-root
+- 2026-08-10T18:42:35Z verified by `go build ./... && go test ./...` (exit 0)
+- 2026-08-10T18:42:35Z deliverable: dacli/007-describe-schema-commands-emit-the-tool-catalog-with-json-schemas is merged into trunk
+- 2026-08-10T18:42:35Z completed by a-root
+- 2026-08-10T18:49:04Z accepted by a-root
+- 2026-08-10T18:49:04Z verified by `go build ./... && go test ./...` (exit 0)
+- 2026-08-10T18:49:04Z deliverable: dacli/007-describe-schema-commands-emit-the-tool-catalog-with-json-schemas is merged into trunk
+- 2026-08-10T18:49:04Z completed by a-root
+- 2026-08-10T18:55:16Z accepted by a-root
+- 2026-08-10T18:55:16Z verified by `go build ./... && go test ./...` (exit 0)
+- 2026-08-10T18:55:16Z deliverable: dacli/007-describe-schema-commands-emit-the-tool-catalog-with-json-schemas is merged into trunk
+- 2026-08-10T18:55:16Z completed by a-root
+- 2026-08-10T19:01:45Z accepted by a-root
+- 2026-08-10T19:01:45Z verified by `go build ./... && go test ./...` (exit 0)
+- 2026-08-10T19:01:45Z deliverable: dacli/007-describe-schema-commands-emit-the-tool-catalog-with-json-schemas is merged into trunk
+- 2026-08-10T19:01:45Z completed by a-root

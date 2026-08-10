@@ -35,3 +35,35 @@ a composed timeline becomes a real video deterministically
 - 2026-08-10T17:56:25Z verified by `go build ./... && go test ./...` (exit 0)
 - 2026-08-10T17:56:25Z deliverable: no dacli/017-render-command-melt-renders-a-timeline-to-an-output-file branch — nothing to check against trunk
 - 2026-08-10T17:56:25Z completed by a-root
+- 2026-08-10T18:10:48Z accepted by a-root
+- 2026-08-10T18:10:48Z verified by `go build ./... && go test ./...` (exit 0)
+- 2026-08-10T18:10:48Z deliverable: no dacli/017-render-command-melt-renders-a-timeline-to-an-output-file branch — nothing to check against trunk
+- 2026-08-10T18:10:48Z completed by a-root
+- 2026-08-10T18:19:16Z accepted by a-root
+- 2026-08-10T18:19:16Z verified by `go build ./... && go test ./...` (exit 0)
+- 2026-08-10T18:19:16Z deliverable: no dacli/017-render-command-melt-renders-a-timeline-to-an-output-file branch — nothing to check against trunk
+- 2026-08-10T18:19:16Z completed by a-root
+- 2026-08-10T18:25:57Z accepted by a-root
+- 2026-08-10T18:25:57Z verified by `go build ./... && go test ./...` (exit 0)
+- 2026-08-10T18:25:57Z deliverable: no dacli/017-render-command-melt-renders-a-timeline-to-an-output-file branch — nothing to check against trunk
+- 2026-08-10T18:25:57Z completed by a-root
+- 2026-08-10T18:36:07Z accepted by a-root
+- 2026-08-10T18:36:07Z verified by `go build ./... && go test ./...` (exit 0)
+- 2026-08-10T18:36:07Z deliverable: no dacli/017-render-command-melt-renders-a-timeline-to-an-output-file branch — nothing to check against trunk
+- 2026-08-10T18:36:07Z completed by a-root
+- 2026-08-10T18:42:37Z accepted by a-root
+- 2026-08-10T18:42:37Z verified by `go build ./... && go test ./...` (exit 0)
+- 2026-08-10T18:42:37Z deliverable: no dacli/017-render-command-melt-renders-a-timeline-to-an-output-file branch — nothing to check against trunk
+- 2026-08-10T18:42:37Z completed by a-root
+- 2026-08-10T18:49:07Z accepted by a-root
+- 2026-08-10T18:49:07Z verified by `go build ./... && go test ./...` (exit 0)
+- 2026-08-10T18:49:07Z deliverable: no dacli/017-render-command-melt-renders-a-timeline-to-an-output-file branch — nothing to check against trunk
+- 2026-08-10T18:49:07Z completed by a-root
+- 2026-08-10T18:55:18Z accepted by a-root
+- 2026-08-10T18:55:18Z verified by `go build ./... && go test ./...` (exit 0)
+- 2026-08-10T18:55:18Z deliverable: no dacli/017-render-command-melt-renders-a-timeline-to-an-output-file branch — nothing to check against trunk
+- 2026-08-10T18:55:18Z completed by a-root
+- 2026-08-10T19:01:47Z accepted by a-root
+- 2026-08-10T19:01:47Z verified by `go build ./... && go test ./...` (exit 0)
+- 2026-08-10T19:01:47Z deliverable: no dacli/017-render-command-melt-renders-a-timeline-to-an-output-file branch — nothing to check against trunk
+- 2026-08-10T19:01:47Z completed by a-root

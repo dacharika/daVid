@@ -33,3 +33,35 @@ a vertical short is watchable on a phone, which is the whole point of the format
 - 2026-08-10T17:56:25Z verified by `go build ./... && go test ./...` (exit 0)
 - 2026-08-10T17:56:25Z deliverable: no dacli/023-shorts-frame-head-and-shoulders-instead-of-full-body branch — nothing to check against trunk
 - 2026-08-10T17:56:25Z completed by a-root
+- 2026-08-10T18:10:49Z accepted by a-root
+- 2026-08-10T18:10:49Z verified by `go build ./... && go test ./...` (exit 0)
+- 2026-08-10T18:10:49Z deliverable: no dacli/023-shorts-frame-head-and-shoulders-instead-of-full-body branch — nothing to check against trunk
+- 2026-08-10T18:10:49Z completed by a-root
+- 2026-08-10T18:19:16Z accepted by a-root
+- 2026-08-10T18:19:16Z verified by `go build ./... && go test ./...` (exit 0)
+- 2026-08-10T18:19:16Z deliverable: no dacli/023-shorts-frame-head-and-shoulders-instead-of-full-body branch — nothing to check against trunk
+- 2026-08-10T18:19:16Z completed by a-root
+- 2026-08-10T18:25:58Z accepted by a-root
+- 2026-08-10T18:25:58Z verified by `go build ./... && go test ./...` (exit 0)
+- 2026-08-10T18:25:58Z deliverable: no dacli/023-shorts-frame-head-and-shoulders-instead-of-full-body branch — nothing to check against trunk
+- 2026-08-10T18:25:58Z completed by a-root
+- 2026-08-10T18:36:08Z accepted by a-root
+- 2026-08-10T18:36:08Z verified by `go build ./... && go test ./...` (exit 0)
+- 2026-08-10T18:36:08Z deliverable: no dacli/023-shorts-frame-head-and-shoulders-instead-of-full-body branch — nothing to check against trunk
+- 2026-08-10T18:36:08Z completed by a-root
+- 2026-08-10T18:42:37Z accepted by a-root
+- 2026-08-10T18:42:37Z verified by `go build ./... && go test ./...` (exit 0)
+- 2026-08-10T18:42:37Z deliverable: no dacli/023-shorts-frame-head-and-shoulders-instead-of-full-body branch — nothing to check against trunk
+- 2026-08-10T18:42:37Z completed by a-root
+- 2026-08-10T18:49:07Z accepted by a-root
+- 2026-08-10T18:49:07Z verified by `go build ./... && go test ./...` (exit 0)
+- 2026-08-10T18:49:07Z deliverable: no dacli/023-shorts-frame-head-and-shoulders-instead-of-full-body branch — nothing to check against trunk
+- 2026-08-10T18:49:07Z completed by a-root
+- 2026-08-10T18:55:18Z accepted by a-root
+- 2026-08-10T18:55:18Z verified by `go build ./... && go test ./...` (exit 0)
+- 2026-08-10T18:55:18Z deliverable: no dacli/023-shorts-frame-head-and-shoulders-instead-of-full-body branch — nothing to check against trunk
+- 2026-08-10T18:55:18Z completed by a-root
+- 2026-08-10T19:01:47Z accepted by a-root
+- 2026-08-10T19:01:47Z verified by `go build ./... && go test ./...` (exit 0)
+- 2026-08-10T19:01:47Z deliverable: no dacli/023-shorts-frame-head-and-shoulders-instead-of-full-body branch — nothing to check against trunk
+- 2026-08-10T19:01:47Z completed by a-root

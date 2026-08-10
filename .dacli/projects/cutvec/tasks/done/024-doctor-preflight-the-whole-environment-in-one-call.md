@@ -28,3 +28,35 @@ a missing tool, model or package is reported before a pipeline spends minutes fa
 - 2026-08-10T17:56:26Z verified by `go build ./... && go test ./...` (exit 0)
 - 2026-08-10T17:56:26Z deliverable: no dacli/024-doctor-preflight-the-whole-environment-in-one-call branch — nothing to check against trunk
 - 2026-08-10T17:56:26Z completed by a-root
+- 2026-08-10T18:10:49Z accepted by a-root
+- 2026-08-10T18:10:49Z verified by `go build ./... && go test ./...` (exit 0)
+- 2026-08-10T18:10:49Z deliverable: no dacli/024-doctor-preflight-the-whole-environment-in-one-call branch — nothing to check against trunk
+- 2026-08-10T18:10:49Z completed by a-root
+- 2026-08-10T18:19:17Z accepted by a-root
+- 2026-08-10T18:19:17Z verified by `go build ./... && go test ./...` (exit 0)
+- 2026-08-10T18:19:17Z deliverable: no dacli/024-doctor-preflight-the-whole-environment-in-one-call branch — nothing to check against trunk
+- 2026-08-10T18:19:17Z completed by a-root
+- 2026-08-10T18:25:58Z accepted by a-root
+- 2026-08-10T18:25:58Z verified by `go build ./... && go test ./...` (exit 0)
+- 2026-08-10T18:25:58Z deliverable: no dacli/024-doctor-preflight-the-whole-environment-in-one-call branch — nothing to check against trunk
+- 2026-08-10T18:25:58Z completed by a-root
+- 2026-08-10T18:36:08Z accepted by a-root
+- 2026-08-10T18:36:08Z verified by `go build ./... && go test ./...` (exit 0)
+- 2026-08-10T18:36:08Z deliverable: no dacli/024-doctor-preflight-the-whole-environment-in-one-call branch — nothing to check against trunk
+- 2026-08-10T18:36:08Z completed by a-root
+- 2026-08-10T18:42:38Z accepted by a-root
+- 2026-08-10T18:42:38Z verified by `go build ./... && go test ./...` (exit 0)
+- 2026-08-10T18:42:38Z deliverable: no dacli/024-doctor-preflight-the-whole-environment-in-one-call branch — nothing to check against trunk
+- 2026-08-10T18:42:38Z completed by a-root
+- 2026-08-10T18:49:08Z accepted by a-root
+- 2026-08-10T18:49:08Z verified by `go build ./... && go test ./...` (exit 0)
+- 2026-08-10T18:49:08Z deliverable: no dacli/024-doctor-preflight-the-whole-environment-in-one-call branch — nothing to check against trunk
+- 2026-08-10T18:49:08Z completed by a-root
+- 2026-08-10T18:55:19Z accepted by a-root
+- 2026-08-10T18:55:19Z verified by `go build ./... && go test ./...` (exit 0)
+- 2026-08-10T18:55:19Z deliverable: no dacli/024-doctor-preflight-the-whole-environment-in-one-call branch — nothing to check against trunk
+- 2026-08-10T18:55:19Z completed by a-root
+- 2026-08-10T19:01:48Z accepted by a-root
+- 2026-08-10T19:01:48Z verified by `go build ./... && go test ./...` (exit 0)
+- 2026-08-10T19:01:48Z deliverable: no dacli/024-doctor-preflight-the-whole-environment-in-one-call branch — nothing to check against trunk
+- 2026-08-10T19:01:48Z completed by a-root

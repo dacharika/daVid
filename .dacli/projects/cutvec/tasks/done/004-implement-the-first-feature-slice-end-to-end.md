@@ -39,3 +39,35 @@ Pick the single entry point named first in cutvec's Spec section and carry one r
 - 2026-08-10T17:56:22Z verified by `go build ./... && go test ./...` (exit 0)
 - 2026-08-10T17:56:22Z deliverable: no dacli/004-implement-the-first-feature-slice-end-to-end branch — nothing to check against trunk
 - 2026-08-10T17:56:22Z completed by a-root
+- 2026-08-10T18:10:45Z accepted by a-root
+- 2026-08-10T18:10:45Z verified by `go build ./... && go test ./...` (exit 0)
+- 2026-08-10T18:10:45Z deliverable: no dacli/004-implement-the-first-feature-slice-end-to-end branch — nothing to check against trunk
+- 2026-08-10T18:10:45Z completed by a-root
+- 2026-08-10T18:19:13Z accepted by a-root
+- 2026-08-10T18:19:13Z verified by `go build ./... && go test ./...` (exit 0)
+- 2026-08-10T18:19:13Z deliverable: no dacli/004-implement-the-first-feature-slice-end-to-end branch — nothing to check against trunk
+- 2026-08-10T18:19:13Z completed by a-root
+- 2026-08-10T18:25:54Z accepted by a-root
+- 2026-08-10T18:25:54Z verified by `go build ./... && go test ./...` (exit 0)
+- 2026-08-10T18:25:54Z deliverable: no dacli/004-implement-the-first-feature-slice-end-to-end branch — nothing to check against trunk
+- 2026-08-10T18:25:54Z completed by a-root
+- 2026-08-10T18:36:05Z accepted by a-root
+- 2026-08-10T18:36:05Z verified by `go build ./... && go test ./...` (exit 0)
+- 2026-08-10T18:36:05Z deliverable: no dacli/004-implement-the-first-feature-slice-end-to-end branch — nothing to check against trunk
+- 2026-08-10T18:36:05Z completed by a-root
+- 2026-08-10T18:42:34Z accepted by a-root
+- 2026-08-10T18:42:34Z verified by `go build ./... && go test ./...` (exit 0)
+- 2026-08-10T18:42:34Z deliverable: no dacli/004-implement-the-first-feature-slice-end-to-end branch — nothing to check against trunk
+- 2026-08-10T18:42:34Z completed by a-root
+- 2026-08-10T18:49:04Z accepted by a-root
+- 2026-08-10T18:49:04Z verified by `go build ./... && go test ./...` (exit 0)
+- 2026-08-10T18:49:04Z deliverable: no dacli/004-implement-the-first-feature-slice-end-to-end branch — nothing to check against trunk
+- 2026-08-10T18:49:04Z completed by a-root
+- 2026-08-10T18:55:15Z accepted by a-root
+- 2026-08-10T18:55:15Z verified by `go build ./... && go test ./...` (exit 0)
+- 2026-08-10T18:55:15Z deliverable: no dacli/004-implement-the-first-feature-slice-end-to-end branch — nothing to check against trunk
+- 2026-08-10T18:55:15Z completed by a-root
+- 2026-08-10T19:01:44Z accepted by a-root
+- 2026-08-10T19:01:44Z verified by `go build ./... && go test ./...` (exit 0)
+- 2026-08-10T19:01:44Z deliverable: no dacli/004-implement-the-first-feature-slice-end-to-end branch — nothing to check against trunk
+- 2026-08-10T19:01:44Z completed by a-root
