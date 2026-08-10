@@ -1,0 +1,86 @@
+# Cut a release from a tag.
+#
+# cutvec is a single Go binary plus a directory of Python workers, so a release
+# is those binaries for the platforms it runs on, and the workers alongside them.
+# The workers are shipped in the archive rather than left to `git clone`, because
+# a binary whose workers are a different version speaks a different protocol.
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Tag to build (must already exist)
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: ${{ matrix.goos }}/${{ matrix.goarch }}
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - { goos: darwin, goarch: arm64 }
+          - { goos: darwin, goarch: amd64 }
+          - { goos: linux, goarch: amd64 }
+          - { goos: linux, goarch: arm64 }
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.tag || github.ref }}
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: 'go.mod'
+          cache: true
+
+      - name: Build
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: "0"
+        run: |
+          version="${{ github.event.inputs.tag || github.ref_name }}"
+          mkdir -p dist/cutvec
+          # -trimpath keeps build paths out of the binary, so two builds of the
+          # same commit are byte-identical rather than carrying whoever built them.
+          go build -trimpath -ldflags "-s -w -X main.version=${version}" \
+            -o dist/cutvec/cutvec ./cmd/cutvec
+          cp -r workers dist/cutvec/workers
+          cp README.md AGENTS.md dist/cutvec/ 2>/dev/null || true
+          tar -C dist -czf "cutvec_${version}_${{ matrix.goos }}_${{ matrix.goarch }}.tar.gz" cutvec
+
+      - name: Checksum
+        run: sha256sum cutvec_*.tar.gz > "cutvec_${{ matrix.goos }}_${{ matrix.goarch }}.sha256"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cutvec-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: |
+            cutvec_*.tar.gz
+            cutvec_*.sha256
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="${{ github.event.inputs.tag || github.ref_name }}"
+          gh release create "$tag" artifacts/* \
+            --title "$tag" \
+            --generate-notes \
+            --verify-tag || \
+          gh release upload "$tag" artifacts/* --clobber

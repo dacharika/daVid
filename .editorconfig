@@ -1,0 +1,26 @@
+# Keeps whitespace consistent regardless of the editor an agent or a person is
+# driving. gofmt and ruff already enforce the languages; this covers the files
+# they do not touch, where a stray tab in YAML is a real failure.
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+indent_style = space
+indent_size = 2
+
+[*.go]
+indent_style = tab
+
+[*.py]
+indent_size = 4
+
+[Makefile]
+indent_style = tab
+
+[*.md]
+# Two trailing spaces are a hard line break in Markdown, so trimming them would
+# silently reflow a document.
+trim_trailing_whitespace = false

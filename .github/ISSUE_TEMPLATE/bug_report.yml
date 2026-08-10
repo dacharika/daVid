@@ -1,0 +1,66 @@
+name: Bug report
+description: Something produces the wrong result, or fails when it should not
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        A report is most useful when someone can reproduce it without asking you
+        anything. The fields below are what has actually been needed here.
+
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: The behaviour you saw, and what you expected instead.
+      placeholder: |
+        `cutvec shorts` rendered a 1080x1920 clip framed on the interviewer
+        rather than the speaker the search matched.
+    validations:
+      required: true
+
+  - type: textarea
+    id: repro
+    attributes:
+      label: How to reproduce
+      description: >
+        The exact commands and the JSON request. If media is involved, say what
+        kind — resolution, length, how many people in frame — since most of the
+        real bugs here have depended on that.
+      render: shell
+    validations:
+      required: true
+
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Evidence
+      description: >
+        What makes you confident this is wrong. An extracted frame for anything
+        visual, a measurement for anything audible, the MLT XML for a timeline,
+        the raw JSON for a protocol problem. A confident description without
+        evidence has been wrong here before.
+    validations:
+      required: true
+
+  - type: textarea
+    id: error
+    attributes:
+      label: The structured error, if there was one
+      description: The full `{code, message, hint, retryable}` object.
+      render: json
+
+  - type: textarea
+    id: doctor
+    attributes:
+      label: Output of `cutvec doctor --json`
+      description: >
+        This reports which workers, binaries, models and packages are present.
+        A surprising number of reports turn out to be a missing tool.
+      render: json
+
+  - type: input
+    id: version
+    attributes:
+      label: Version / commit
+      placeholder: git rev-parse --short HEAD

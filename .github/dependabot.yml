@@ -1,0 +1,25 @@
+# cutvec has no third-party Go modules by design, so the supply chain that can
+# actually drift is the CI workflow's actions and the Python tooling the worker
+# jobs install. Those are what this watches.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: monthly
+    # Grouped so a routine bump is one PR to review rather than five, each of
+    # which would otherwise run the full matrix.
+    groups:
+      actions:
+        patterns: ["*"]
+    commit-message:
+      prefix: "ci"
+    open-pull-requests-limit: 3
+
+  - package-ecosystem: gomod
+    directory: "/"
+    schedule:
+      interval: monthly
+    commit-message:
+      prefix: "deps"
+    open-pull-requests-limit: 3
