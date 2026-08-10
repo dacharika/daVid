@@ -131,3 +131,27 @@ jobs:
         # still return a well-formed JSON Response with a structured error
         # rather than a traceback, which is the promise the core relies on.
         run: go test -run TestWorkerContract -v ./cmd/cutvec
+
+  # The repository's ruleset requires a check with this exact name, and that
+  # name predates the jobs above being split up. Rather than rename the rule,
+  # this gate carries it: it passes only when every other job did, so the
+  # required check now means "everything is green" instead of "the build ran".
+  build:
+    name: Go build and test
+    needs: [go, staticcheck, workers, contract]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Report the result of every job
+        run: |
+          echo "go:          ${{ needs.go.result }}"
+          echo "staticcheck: ${{ needs.staticcheck.result }}"
+          echo "workers:     ${{ needs.workers.result }}"
+          echo "contract:    ${{ needs.contract.result }}"
+          for r in "${{ needs.go.result }}" "${{ needs.staticcheck.result }}" \
+                   "${{ needs.workers.result }}" "${{ needs.contract.result }}"; do
+            if [ "$r" != "success" ]; then
+              echo "::error::a required job did not succeed"
+              exit 1
+            fi
+          done
