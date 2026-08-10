@@ -95,6 +95,23 @@ func TestHelperProcess(t *testing.T) {
 		out, _ := json.Marshal(resp)
 		os.Stdout.Write(out)
 		os.Exit(0)
+	case "search-assets":
+		// A local asset search worker: return scored library hits deliberately
+		// out of ranked order (lower score first) so the test can prove the core
+		// re-ranks them into a deterministic descending-score order.
+		resp := worker.Response{
+			Version: worker.ContractVersion,
+			Result: map[string]any{
+				"model": "fake-local-embed",
+				"assets": []map[string]any{
+					{"ref": "sfx/whoosh.wav", "text": "whoosh", "score": 0.2},
+					{"ref": "sfx/boom.wav", "text": "deep boom", "score": 0.9},
+				},
+			},
+		}
+		out, _ := json.Marshal(resp)
+		os.Stdout.Write(out)
+		os.Exit(0)
 	case "speakers":
 		// Echo the layout the core sent so the test can prove the fixed layout
 		// travels to the worker, and return two per-time turns.
@@ -1868,6 +1885,68 @@ func TestSearchLimitCaps(t *testing.T) {
 	}
 	if res.Results[0].Text != "hello" {
 		t.Fatalf("limit kept %q, want the top-scoring hello", res.Results[0].Text)
+	}
+}
+
+// assetSearchReply mirrors the assets search JSON: the query, the model, and the
+// ranked library hits.
+type assetSearchReply struct {
+	Query  string `json:"query"`
+	Model  string `json:"model"`
+	Assets []struct {
+		Ref   string  `json:"ref"`
+		Text  string  `json:"text"`
+		Score float64 `json:"score"`
+	} `json:"assets"`
+}
+
+// TestAssetsSearchRanksHitsByScore proves the library retrieval surface re-ranks
+// the worker's hits into a deterministic descending-score order, mirroring
+// transcript search's project.RankCandidates. The fake worker deliberately
+// returns a 0.2-score hit before a 0.9-score hit, so a correct pass proves the Go
+// side sorts them highest-first before emitting.
+func TestAssetsSearchRanksHitsByScore(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "proj")
+	if err := run([]string{"init"}, strings.NewReader(`{"project":"`+dir+`"}`), io.Discard); err != nil {
+		t.Fatalf("init = %v", err)
+	}
+	wpath, wargs := indexWorkerEnv(t, "search-assets")
+
+	var res assetSearchReply
+	runJSON(t, []string{"assets", "search", "deep boom"},
+		map[string]any{"project": dir, "worker": wpath, "workerArgs": wargs}, &res)
+
+	if len(res.Assets) != 2 {
+		t.Fatalf("assets = %+v, want 2 hits", res.Assets)
+	}
+	// Ranked most-relevant first: the 0.9-score boom outranks the 0.2-score
+	// whoosh even though the worker listed them the other way.
+	top := res.Assets[0]
+	if top.Score != 0.9 || top.Ref != "sfx/boom.wav" {
+		t.Fatalf("top hit = %+v, want the 0.9-score sfx/boom.wav", top)
+	}
+	if res.Assets[0].Score < res.Assets[1].Score {
+		t.Fatalf("assets not sorted by descending score: %+v", res.Assets)
+	}
+}
+
+// TestAssetsSearchLimitCaps asserts req.Limit caps the ranked hits Go-side,
+// keeping the highest-scoring ones.
+func TestAssetsSearchLimitCaps(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "proj")
+	if err := run([]string{"init"}, strings.NewReader(`{"project":"`+dir+`"}`), io.Discard); err != nil {
+		t.Fatalf("init = %v", err)
+	}
+	wpath, wargs := indexWorkerEnv(t, "search-assets")
+
+	var res assetSearchReply
+	runJSON(t, []string{"assets", "search", "deep boom"},
+		map[string]any{"project": dir, "worker": wpath, "workerArgs": wargs, "limit": 1}, &res)
+	if len(res.Assets) != 1 {
+		t.Fatalf("limit=1 returned %d hits, want 1", len(res.Assets))
+	}
+	if res.Assets[0].Ref != "sfx/boom.wav" {
+		t.Fatalf("limit kept %q, want the top-scoring sfx/boom.wav", res.Assets[0].Ref)
 	}
 }
 

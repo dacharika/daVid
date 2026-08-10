@@ -261,6 +261,24 @@ func assetsSearchCmd(args []string, stdin io.Reader, stdout io.Writer) error {
 			out.Assets = append(out.Assets, hit)
 		}
 	}
+	// Re-rank into a deterministic total order regardless of the worker's
+	// iteration order, then cap to the requested limit — mirroring searchCmd's
+	// project.RankCandidates so the library retrieval surface is as
+	// deterministic as transcript search.
+	sort.SliceStable(out.Assets, func(i, j int) bool {
+		a, b := out.Assets[i], out.Assets[j]
+		switch {
+		case a.Score != b.Score:
+			return a.Score > b.Score
+		case a.Ref != b.Ref:
+			return a.Ref < b.Ref
+		default:
+			return a.Text < b.Text
+		}
+	})
+	if req.Limit > 0 && len(out.Assets) > req.Limit {
+		out.Assets = out.Assets[:req.Limit]
+	}
 	return emitJSON(stdout, out)
 }
 
