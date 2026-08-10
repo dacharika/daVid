@@ -15,3 +15,5 @@ a vertical short is watchable on a phone, which is the whole point of the format
 - [ ] the crop is an explicit window computed from source dimensions and the detected seat, not center=1
 - [ ] a rendered short visibly frames head-and-shoulders; verified from a frame, not from the XML
 ## Log
+- 2026-08-10T16:55:05Z claimed by a-fixer-pwpjwm
+- 2026-08-10T17:14:19Z a-fixer-pwpjwm: PR opened: https://github.com/mlnomadpy/cutvec/pull/26 (event 01KZPAMCMFKFSP33H0AVTG5B0V)

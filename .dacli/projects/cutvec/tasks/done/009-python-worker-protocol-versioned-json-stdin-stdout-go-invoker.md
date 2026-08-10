@@ -29,3 +29,7 @@ Go orchestrates deterministic Python ML workers over a stable contract
 - 2026-08-06T00:14:56Z accepted by a-root
 - 2026-08-06T00:14:56Z verified by `go build ./... && go test ./...` (exit 0)
 - 2026-08-06T00:14:56Z completed by a-root
+- 2026-08-10T16:55:00Z accepted by a-root
+- 2026-08-10T16:55:00Z verified by `go build ./... && go test ./...` (exit 0)
+- 2026-08-10T16:55:00Z deliverable: dacli/009-python-worker-protocol-versioned-json-stdin-stdout-go-invoker is merged into trunk
+- 2026-08-10T16:55:00Z completed by a-root
