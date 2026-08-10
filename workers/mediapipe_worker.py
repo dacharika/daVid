@@ -107,24 +107,40 @@ def detect_signals(video: str, model: str):
     width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
     half = width // 2
 
-    def jaw_of(crop):
+    def measure(crop, x_offset):
+        """jawOpen plus the face's centre in whole-frame normalised coords."""
         big = cv2.resize(crop, None, fx=UPSCALE, fy=UPSCALE,
                          interpolation=cv2.INTER_LINEAR)
         img = mp.Image(image_format=mp.ImageFormat.SRGB,
                        data=cv2.cvtColor(big, cv2.COLOR_BGR2RGB))
         res = landmarker.detect(img)
-        if not res.face_landmarks or not res.face_blendshapes:
-            return np.nan
-        return next((c.score for c in res.face_blendshapes[0]
-                     if c.category_name == "jawOpen"), np.nan)
+        if not res.face_landmarks:
+            return np.nan, np.nan, np.nan
+        lms = res.face_landmarks[0]
+        # Landmarks are normalised within the half-crop, so map x back onto the
+        # whole frame: that is what a reframe needs to aim at.
+        cx = (x_offset + float(np.mean([p.x for p in lms])) * half) / width
+        cy = float(np.mean([p.y for p in lms]))
+        jaw = np.nan
+        if res.face_blendshapes:
+            jaw = next((c.score for c in res.face_blendshapes[0]
+                        if c.category_name == "jawOpen"), np.nan)
+        return jaw, cx, cy
 
     left, right, i = [], [], 0
+    seats = {"left": {"cx": [], "cy": []}, "right": {"cx": [], "cy": []}}
     while True:
         ok, frame = cap.read()
         if not ok:
             break
-        left.append(jaw_of(frame[:, :half]))
-        right.append(jaw_of(frame[:, half:]))
+        jaw_l, cx_l, cy_l = measure(frame[:, :half], 0)
+        jaw_r, cx_r, cy_r = measure(frame[:, half:], half)
+        left.append(jaw_l)
+        right.append(jaw_r)
+        for seat, cx, cy in (("left", cx_l, cy_l), ("right", cx_r, cy_r)):
+            if np.isfinite(cx):
+                seats[seat]["cx"].append(cx)
+                seats[seat]["cy"].append(cy)
         i += 1
         if i % 900 == 0:
             log(f"  analysed {i} frames ({i / fps:.0f}s)")
@@ -136,7 +152,28 @@ def detect_signals(video: str, model: str):
             hint="check that the source is a readable video file",
         )
     log(f"analysed {i} frames at {fps:.2f} fps")
-    return left, right, fps
+    return left, right, fps, summarise_seats(seats, i)
+
+
+def summarise_seats(seats: dict, frames: int) -> dict:
+    """Where each seat actually sits, as the median of its detections.
+
+    The median rather than the mean because a handful of mis-detections would
+    drag an average off the subject, and a reframe aimed at the wrong place is
+    worse than one aimed at the frame's centre. Seats detected in too few frames
+    are omitted so a caller falls back rather than trusting noise.
+    """
+    np = require_module("numpy", "pip install numpy")
+    out = {}
+    for seat, vals in seats.items():
+        if len(vals["cx"]) < max(10, frames * 0.02):
+            continue
+        out[seat] = {
+            "cx": round(float(np.median(vals["cx"])), 4),
+            "cy": round(float(np.median(vals["cy"])), 4),
+            "detections": len(vals["cx"]),
+        }
+    return out
 
 
 def turns_from_signals(left, right, fps: float) -> list[dict]:
@@ -210,14 +247,17 @@ def handle(params: dict) -> dict:
         proxy = os.path.join(tmp, "proxy.avi")
         log(f"building {PROXY_W}px/{PROXY_FPS}fps analysis proxy")
         build_proxy(ffmpeg, source, proxy)
-        left, right, fps = detect_signals(proxy, model)
+        left, right, fps, seats = detect_signals(proxy, model)
 
     turns = turns_from_signals(left, right, fps)
     talk = {"left": 0.0, "right": 0.0}
     for t in turns:
         talk[t["speaker"]] += t["end"] - t["start"]
     log(f"{len(turns)} turns · left {talk['left']:.0f}s · right {talk['right']:.0f}s")
-    return {"layout": layout, "turns": turns}
+    for seat, pos in seats.items():
+        log(f"  {seat} seat at x={pos['cx']:.3f} y={pos['cy']:.3f} "
+            f"({pos['detections']} detections)")
+    return {"layout": layout, "turns": turns, "seats": seats}
 
 
 if __name__ == "__main__":

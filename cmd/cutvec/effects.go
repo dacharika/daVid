@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/tahabsn/cutvec/internal/axerror"
+	"github.com/tahabsn/cutvec/internal/project"
 	"github.com/tahabsn/cutvec/internal/timeline"
 	"github.com/tahabsn/cutvec/internal/worker"
 )
@@ -152,6 +153,26 @@ func applyEffects(tl *timeline.Timeline, byProducer map[string][]timeline.Filter
 		}
 	}
 	return nil
+}
+
+// --- seat framing -----------------------------------------------------------
+
+// seatCentre answers where to aim the frame for a speaker. Detection is trusted
+// when it reported a position: an assumed seating plan is right for one set and
+// wrong for every other, whereas the detector measured this one. The supplied
+// fallback is used when a seat was not reliably detected, and an implausible
+// centre is rejected rather than pointing the camera off the subject.
+func seatCentre(s project.Speakers, seat string, fallback float64) float64 {
+	pos, ok := s.Seats[seat]
+	if !ok {
+		return fallback
+	}
+	// A face detected hard against a frame edge is far more likely to be a
+	// mis-detection than a real seating position.
+	if pos.CX < 0.05 || pos.CX > 0.95 {
+		return fallback
+	}
+	return pos.CX
 }
 
 // --- audio beds -------------------------------------------------------------

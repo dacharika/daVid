@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/tahabsn/cutvec/internal/axerror"
+	"github.com/tahabsn/cutvec/internal/project"
 	"github.com/tahabsn/cutvec/internal/timeline"
 )
 
@@ -280,5 +281,47 @@ func TestAudioGainOutOfRangeIsRejected(t *testing.T) {
 	}
 	if err := applyAudio(tl, []audioSpec{{Gain: 0.2}}); err == nil {
 		t.Fatal("an audio entry with no resource was accepted")
+	}
+}
+
+// A detected seat must win over the default seating plan — that is the whole
+// point of measuring: the plan is right for one set and wrong for every other.
+func TestSeatCentrePrefersDetectionOverTheDefault(t *testing.T) {
+	s := project.Speakers{Seats: map[string]project.Seat{
+		"left":  {CX: 0.19, CY: 0.4, Detections: 500},
+		"right": {CX: 0.81, CY: 0.4, Detections: 500},
+	}}
+	if got := seatCentre(s, "left", 0.28); got != 0.19 {
+		t.Errorf("left = %v, want the detected 0.19 rather than the 0.28 default", got)
+	}
+	if got := seatCentre(s, "right", 0.72); got != 0.81 {
+		t.Errorf("right = %v, want the detected 0.81", got)
+	}
+}
+
+// An undetected seat has to fall back rather than aim at zero, which would
+// frame the edge of the room.
+func TestSeatCentreFallsBackWhenUndetected(t *testing.T) {
+	s := project.Speakers{Seats: map[string]project.Seat{
+		"left": {CX: 0.3, Detections: 100},
+	}}
+	if got := seatCentre(s, "right", 0.72); got != 0.72 {
+		t.Errorf("undetected right = %v, want the 0.72 fallback", got)
+	}
+	if got := seatCentre(project.Speakers{}, "left", 0.28); got != 0.28 {
+		t.Errorf("no seats at all = %v, want the fallback", got)
+	}
+}
+
+// A face reported hard against a frame edge is far more likely a mis-detection
+// than a real seat, and trusting it would point the camera off the subject.
+func TestSeatCentreRejectsImplausiblePositions(t *testing.T) {
+	for _, cx := range []float64{0.0, 0.02, 0.98, 1.0} {
+		s := project.Speakers{Seats: map[string]project.Seat{
+			"left": {CX: cx, Detections: 300},
+		}}
+		if got := seatCentre(s, "left", 0.28); got != 0.28 {
+			t.Errorf("cx=%v was trusted (got %v), want the fallback", cx, got)
+		}
 	}
 }

@@ -112,6 +112,10 @@ func reframeCmd(args []string, stdin io.Reader, stdout io.Writer) error {
 	if err != nil {
 		return axerror.New("project.read", "cannot read speaker track: "+err.Error()).AsRetryable()
 	}
+	// Prefer where detection actually found each speaker over the default
+	// seating plan, so the punch-ins land on this set rather than an assumed one.
+	req.LeftCentre = seatCentre(speakers, "left", req.LeftCentre)
+	req.RightCentre = seatCentre(speakers, "right", req.RightCentre)
 
 	// The edit must cover the media, not just the detected turns, so trailing
 	// silence still renders. The transcript's last word extends the span when

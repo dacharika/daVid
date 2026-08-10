@@ -447,6 +447,20 @@ type Speakers struct {
 	Layout string `json:"layout"`
 	// Turns are the ordered per-time speaker spans.
 	Turns []Turn `json:"turns"`
+	// Seats is where each speaker actually sits in the frame, keyed by the same
+	// labels the turns use. Detection reports it so a reframe can aim at the
+	// real subject rather than an assumed seating plan; a seat that was not
+	// reliably detected is absent, and callers fall back.
+	Seats map[string]Seat `json:"seats,omitempty"`
+}
+
+// Seat is a speaker's position in the frame, normalised to 0..1.
+type Seat struct {
+	CX float64 `json:"cx"`
+	CY float64 `json:"cy"`
+	// Detections is how many frames the position was measured from — a seat
+	// backed by few detections is a weaker claim about where someone is.
+	Detections int `json:"detections"`
 }
 
 // speakersKey namespaces a speakers cache entry so it never collides with the
