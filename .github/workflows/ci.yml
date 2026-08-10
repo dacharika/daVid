@@ -1,6 +1,11 @@
-# Continuous integration for this repository, written by `dacli new`.
-# It runs the two commands recorded in the project's Constraints section —
-# `go build ./...` and `go test ./...` — so a red check here means what a red local run means.
+# Continuous integration.
+#
+# The gates here mirror what actually broke this project rather than a generic
+# checklist: formatting and vet catch the mechanical mistakes, `-race` catches
+# concurrent ones, a coverage floor stops the tested surface silently shrinking,
+# and the worker contract job checks the Python side against the same JSON
+# protocol the Go core speaks — a worker that stops honouring it fails no Go
+# test at all.
 name: CI
 
 on:
@@ -12,24 +17,141 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  # A newer push makes an in-flight run irrelevant; cancelling frees the runner
+  # instead of paying for an answer nobody will read.
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # The floor is set just under where the suite stands, so it ratchets rather
+  # than blocks: raise it when coverage rises, never lower it to go green.
+  COVERAGE_FLOOR: "62"
+
 jobs:
-  build:
-    name: Go build and test
-    runs-on: ubuntu-latest
+  go:
+    name: Go ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        # macOS is where this is developed and Linux is where it would be
+        # deployed; a path or case-sensitivity bug shows up on exactly one.
+        os: [ubuntu-latest, macos-latest]
     steps:
-      - name: Check out the repository
-        uses: actions/checkout@v4
-      - name: Set up Go
-        uses: actions/setup-go@v5
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
         with:
-          # Pin the toolchain to the version go.mod declares so CI is
-          # deterministic (a floating 'stable' can drift under us) — the
-          # project's determinism value applies to its own build too.
+          # Pinned to go.mod so CI cannot drift under us.
           go-version-file: 'go.mod'
-          cache: 'false'
-      - name: Download modules
-        run: go mod download
+          cache: true
+
+      - name: Formatting
+        run: |
+          unformatted=$(gofmt -l . | grep -v '^$' || true)
+          if [ -n "$unformatted" ]; then
+            echo "::error::these files are not gofmt'd:"
+            echo "$unformatted"
+            gofmt -d $unformatted
+            exit 1
+          fi
+
+      - name: Vet
+        run: go vet ./...
+
       - name: Build
         run: go build ./...
-      - name: Test
-        run: go test ./...
+
+      - name: Test with race detector and coverage
+        run: go test -race -covermode=atomic -coverprofile=coverage.out ./...
+
+      - name: Coverage floor
+        shell: bash
+        run: |
+          pct=$(go tool cover -func=coverage.out | awk '/^total:/ {print $3}' | tr -d '%')
+          echo "total coverage: ${pct}%  (floor ${COVERAGE_FLOOR}%)"
+          awk -v p="$pct" -v f="$COVERAGE_FLOOR" 'BEGIN {exit !(p+0 < f+0)}' \
+            && { echo "::error::coverage ${pct}% is below the ${COVERAGE_FLOOR}% floor"; exit 1; } || true
+
+      - name: Upload coverage
+        if: matrix.os == 'ubuntu-latest'
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage
+          path: coverage.out
+          retention-days: 14
+
+  staticcheck:
+    name: Staticcheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: 'go.mod'
+          cache: true
+      - name: Install staticcheck
+        run: go install honnef.co/go/tools/cmd/staticcheck@latest
+      - run: staticcheck ./...
+
+  workers:
+    name: Python workers
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install ruff
+        run: pip install --quiet ruff
+      - name: Lint
+        run: ruff check workers/
+      - name: Format check
+        run: ruff format --check workers/
+      - name: Compile every worker
+        # A syntax error in a worker is invisible to the Go suite until a
+        # pipeline run fails halfway through.
+        run: python -m compileall -q workers/
+
+  contract:
+    name: Worker protocol contract
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: 'go.mod'
+          cache: true
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Check the workers answer the contract the core speaks
+        # Runs each worker with no ML dependencies installed: every one must
+        # still return a well-formed JSON Response with a structured error
+        # rather than a traceback, which is the promise the core relies on.
+        run: go test -run TestWorkerContract -v ./cmd/cutvec
+
+  # The repository's ruleset requires a check with this exact name, and that
+  # name predates the jobs above being split up. Rather than rename the rule,
+  # this gate carries it: it passes only when every other job did, so the
+  # required check now means "everything is green" instead of "the build ran".
+  build:
+    name: Go build and test
+    needs: [go, staticcheck, workers, contract]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Report the result of every job
+        run: |
+          echo "go:          ${{ needs.go.result }}"
+          echo "staticcheck: ${{ needs.staticcheck.result }}"
+          echo "workers:     ${{ needs.workers.result }}"
+          echo "contract:    ${{ needs.contract.result }}"
+          for r in "${{ needs.go.result }}" "${{ needs.staticcheck.result }}" \
+                   "${{ needs.workers.result }}" "${{ needs.contract.result }}"; do
+            if [ "$r" != "success" ]; then
+              echo "::error::a required job did not succeed"
+              exit 1
+            fi
+          done

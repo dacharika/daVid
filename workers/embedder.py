@@ -9,6 +9,7 @@ Both workers must embed with the *same* backend and model, otherwise query
 vectors land in a different space than the indexed ones — so the model name is
 written into the index and echoed back on search.
 """
+
 from __future__ import annotations
 
 import os
@@ -17,8 +18,9 @@ from cutvec_worker import WorkerError, log
 
 DEFAULT_MODEL = os.environ.get("CUTVEC_EMBED_MODEL", "BAAI/bge-small-en-v1.5")
 
-INSTALL_HINT = ("pip install fastembed  (or sentence-transformers) — cutvec "
-                "embeds locally, no API key required")
+INSTALL_HINT = (
+    "pip install fastembed  (or sentence-transformers) — cutvec embeds locally, no API key required"
+)
 
 
 class Embedder:
@@ -45,8 +47,7 @@ def load(model_name: str = DEFAULT_MODEL) -> Embedder:
 
         log(f"embedding with fastembed model={model_name}")
         embed = TextEmbedding(model_name=model_name)
-        return Embedder("fastembed", model_name,
-                        lambda texts: list(embed.embed(texts)))
+        return Embedder("fastembed", model_name, lambda texts: list(embed.embed(texts)))
     except ImportError:
         pass
 
@@ -56,8 +57,11 @@ def load(model_name: str = DEFAULT_MODEL) -> Embedder:
         st_name = model_name.split("/")[-1] if "/" in model_name else model_name
         log(f"embedding with sentence-transformers model={st_name}")
         model = SentenceTransformer(st_name)
-        return Embedder("sentence-transformers", st_name,
-                        lambda texts: model.encode(texts, show_progress_bar=False))
+        return Embedder(
+            "sentence-transformers",
+            st_name,
+            lambda texts: model.encode(texts, show_progress_bar=False),
+        )
     except ImportError:
         pass
 

@@ -12,6 +12,7 @@ timecodes instead of a transcript to scan.
 Scores are similarities in [0,1] (higher is better), converted from LanceDB's
 L2 distance, so a caller can threshold them without knowing the metric.
 """
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -37,7 +38,8 @@ def handle(params: dict) -> dict:
     table_dir = Path(table_path)
     if not table_dir.exists():
         raise WorkerError(
-            "index.missing", f"no index table at {table_path}",
+            "index.missing",
+            f"no index table at {table_path}",
             hint="run `cutvec index` before searching",
         )
     lancedb = require_module("lancedb", "pip install lancedb")
@@ -48,7 +50,8 @@ def handle(params: dict) -> dict:
         table = db.open_table(name)
     except Exception as exc:
         raise WorkerError(
-            "index.missing", f"cannot open index table {name!r}: {exc}",
+            "index.missing",
+            f"cannot open index table {name!r}: {exc}",
             hint="re-run `cutvec index` to rebuild the table",
         ) from exc
 
@@ -58,12 +61,14 @@ def handle(params: dict) -> dict:
 
     candidates = []
     for row in rows:
-        candidates.append({
-            "start": float(row.get("start", 0.0)),
-            "end": float(row.get("end", 0.0)),
-            "text": row.get("text", ""),
-            "score": to_score(row.get("_distance", 0.0)),
-        })
+        candidates.append(
+            {
+                "start": float(row.get("start", 0.0)),
+                "end": float(row.get("end", 0.0)),
+                "text": row.get("text", ""),
+                "score": to_score(row.get("_distance", 0.0)),
+            }
+        )
     log(f"query {query!r} -> {len(candidates)} candidates")
     return {"candidates": candidates, "model": emb.label}
 
@@ -78,21 +83,33 @@ def handle_assets(params: dict) -> dict:
 
     table_dir = Path(table_path)
     if not table_dir.exists():
-        raise WorkerError("index.missing", f"no asset index at {table_path}",
-                          hint="run `cutvec assets index` before searching assets")
+        raise WorkerError(
+            "index.missing",
+            f"no asset index at {table_path}",
+            hint="run `cutvec assets index` before searching assets",
+        )
     lancedb = require_module("lancedb", "pip install lancedb")
     db = lancedb.connect(str(table_dir.parent))
     name = table_dir.name.removesuffix(".lance")
     try:
         table = db.open_table(name)
     except Exception as exc:
-        raise WorkerError("index.missing", f"cannot open asset table {name!r}: {exc}",
-                          hint="re-run `cutvec assets index` to rebuild it") from exc
+        raise WorkerError(
+            "index.missing",
+            f"cannot open asset table {name!r}: {exc}",
+            hint="re-run `cutvec assets index` to rebuild it",
+        ) from exc
 
     emb = embedder.load()
     rows = table.search(emb.encode([query])[0]).limit(limit).to_list()
-    assets = [{"ref": r.get("ref", ""), "text": r.get("text", ""),
-               "score": to_score(r.get("_distance", 0.0))} for r in rows]
+    assets = [
+        {
+            "ref": r.get("ref", ""),
+            "text": r.get("text", ""),
+            "score": to_score(r.get("_distance", 0.0)),
+        }
+        for r in rows
+    ]
     log(f"asset query {query!r} -> {len(assets)} hits")
     return {"assets": assets, "model": emb.label}
 
