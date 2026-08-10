@@ -1,2 +1,0 @@
-window_tokens: 0
-pending_land: dacli/028-timeline-remove-dead-croprect-and-correct-crop-docs-that-contradict-the
