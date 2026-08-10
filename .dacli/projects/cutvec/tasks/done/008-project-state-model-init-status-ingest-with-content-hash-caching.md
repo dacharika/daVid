@@ -92,3 +92,7 @@ every step is resumable and an agent can read the whole project graph
 - 2026-08-10T19:20:28Z verified by `go build ./... && go test ./...` (exit 0)
 - 2026-08-10T19:20:28Z deliverable: dacli/008-project-state-model-init-status-ingest-with-content-hash-caching is merged into trunk
 - 2026-08-10T19:20:28Z completed by a-root
+- 2026-08-10T19:25:45Z accepted by a-root
+- 2026-08-10T19:25:45Z verified by `go build ./... && go test ./...` (exit 0)
+- 2026-08-10T19:25:45Z deliverable: dacli/008-project-state-model-init-status-ingest-with-content-hash-caching is merged into trunk
+- 2026-08-10T19:25:45Z completed by a-root

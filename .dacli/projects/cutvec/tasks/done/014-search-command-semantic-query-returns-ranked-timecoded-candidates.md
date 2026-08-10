@@ -82,3 +82,7 @@ an agent asks for a moment by meaning and gets timecodes + scores
 - 2026-08-10T19:20:30Z verified by `go build ./... && go test ./...` (exit 0)
 - 2026-08-10T19:20:30Z deliverable: no dacli/014-search-command-semantic-query-returns-ranked-timecoded-candidates branch — nothing to check against trunk
 - 2026-08-10T19:20:30Z completed by a-root
+- 2026-08-10T19:25:46Z accepted by a-root
+- 2026-08-10T19:25:46Z verified by `go build ./... && go test ./...` (exit 0)
+- 2026-08-10T19:25:46Z deliverable: no dacli/014-search-command-semantic-query-returns-ranked-timecoded-candidates branch — nothing to check against trunk
+- 2026-08-10T19:25:46Z completed by a-root
