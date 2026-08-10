@@ -29,6 +29,21 @@ func TestHelperProcess(t *testing.T) {
 	_ = json.Unmarshal(in, &req)
 
 	switch os.Getenv("WORKER_MODE") {
+	case "probe":
+		// Stand in for ffmpeg: report the source's intrinsic dimensions without
+		// touching a real media file or ffprobe binary.
+		resp := worker.Response{
+			Version: worker.ContractVersion,
+			Result: map[string]any{
+				"width":    1920,
+				"height":   1080,
+				"duration": 12.5,
+				"fps":      30.0,
+			},
+		}
+		out, _ := json.Marshal(resp)
+		os.Stdout.Write(out)
+		os.Exit(0)
 	case "transcribe":
 		resp := worker.Response{
 			Version: worker.ContractVersion,
@@ -123,6 +138,16 @@ func transcribeWorkerEnv(t *testing.T, mode string) (path string, args []string)
 	t.Helper()
 	t.Setenv("GO_WANT_HELPER_PROCESS", "1")
 	t.Setenv("WORKER_MODE", mode)
+	return os.Args[0], []string{"-test.run=TestHelperProcess"}
+}
+
+// ffmpegWorkerEnv points ingest at this test binary as the ffmpeg probe worker,
+// re-exec'd as a helper process in WORKER_MODE=probe — the same re-exec trick the
+// other worker helpers use, so no ffmpeg/ffprobe is needed on PATH.
+func ffmpegWorkerEnv(t *testing.T) (path string, args []string) {
+	t.Helper()
+	t.Setenv("GO_WANT_HELPER_PROCESS", "1")
+	t.Setenv("WORKER_MODE", "probe")
 	return os.Args[0], []string{"-test.run=TestHelperProcess"}
 }
 
@@ -537,6 +562,104 @@ func TestIngestCacheHitIdempotent(t *testing.T) {
 	}
 	if len(m.Sources) != 1 {
 		t.Fatalf("manifest has %d sources after re-ingest, want 1 (idempotent)", len(m.Sources))
+	}
+}
+
+// TestIngestProbesDimensions is the AC1 proof: ingest records the source's pixel
+// width, height, duration and fps via the ffmpeg worker, and `status --json`
+// reports them. AC2: a re-ingest of the unchanged bytes is still a cache hit that
+// returns the same probe without re-running the worker.
+func TestIngestProbesDimensions(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "proj")
+	runJSON(t, []string{"init"}, map[string]any{"project": dir}, nil)
+
+	src := filepath.Join(t.TempDir(), "raw.mp4")
+	if err := os.WriteFile(src, []byte("fake video bytes"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	wpath, wargs := ffmpegWorkerEnv(t)
+
+	type probe struct {
+		Width    int     `json:"width"`
+		Height   int     `json:"height"`
+		Duration float64 `json:"duration"`
+		Fps      float64 `json:"fps"`
+	}
+	want := probe{Width: 1920, Height: 1080, Duration: 12.5, Fps: 30}
+
+	var first struct {
+		Cached bool `json:"cached"`
+		Source struct {
+			Probe *probe `json:"probe"`
+		} `json:"source"`
+	}
+	runJSON(t, []string{"ingest"}, map[string]any{
+		"project": dir, "source": src, "worker": wpath, "workerArgs": wargs,
+	}, &first)
+	if first.Cached {
+		t.Fatal("first ingest cached = true, want false (cache miss)")
+	}
+	if first.Source.Probe == nil {
+		t.Fatal("first ingest returned no probe")
+	}
+	if *first.Source.Probe != want {
+		t.Fatalf("probe = %+v, want %+v", *first.Source.Probe, want)
+	}
+
+	// AC1: status --json reports the recorded dimensions on the source.
+	var graph struct {
+		Sources []struct {
+			Probe *probe `json:"probe"`
+		} `json:"sources"`
+	}
+	runJSON(t, []string{"status", "--json"}, map[string]any{"project": dir}, &graph)
+	if len(graph.Sources) != 1 || graph.Sources[0].Probe == nil {
+		t.Fatalf("status sources = %+v, want one source carrying a probe", graph.Sources)
+	}
+	if *graph.Sources[0].Probe != want {
+		t.Fatalf("status probe = %+v, want %+v", *graph.Sources[0].Probe, want)
+	}
+
+	// AC2: re-ingesting the unchanged bytes is a cache hit that returns the same
+	// probe. Point the worker at a path that cannot run to prove none is invoked.
+	var second struct {
+		Cached bool `json:"cached"`
+		Source struct {
+			Probe *probe `json:"probe"`
+		} `json:"source"`
+	}
+	runJSON(t, []string{"ingest"}, map[string]any{
+		"project": dir, "source": src, "worker": "/nonexistent/ffmpeg-worker",
+	}, &second)
+	if !second.Cached {
+		t.Fatal("second ingest cached = false, want true (cache hit)")
+	}
+	if second.Source.Probe == nil || *second.Source.Probe != want {
+		t.Fatalf("cache-hit probe = %+v, want %+v", second.Source.Probe, want)
+	}
+}
+
+// TestIngestWithoutWorkerRecordsNoProbe pins the graceful path at the CLI: with no
+// ffmpeg worker configured, ingest still records the source, just without a probe.
+func TestIngestWithoutWorkerRecordsNoProbe(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "proj")
+	runJSON(t, []string{"init"}, map[string]any{"project": dir}, nil)
+	src := filepath.Join(t.TempDir(), "raw.mp4")
+	if err := os.WriteFile(src, []byte("no worker bytes"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	var res struct {
+		Source struct {
+			Hash  string         `json:"hash"`
+			Probe map[string]any `json:"probe"`
+		} `json:"source"`
+	}
+	runJSON(t, []string{"ingest"}, map[string]any{"project": dir, "source": src}, &res)
+	if res.Source.Hash == "" {
+		t.Fatal("ingest recorded no source")
+	}
+	if res.Source.Probe != nil {
+		t.Fatalf("probe = %+v, want absent with no worker configured", res.Source.Probe)
 	}
 }
 
