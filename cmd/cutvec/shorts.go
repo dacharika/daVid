@@ -147,6 +147,10 @@ func shortsCmd(args []string, stdin io.Reader, stdout io.Writer) error {
 	if err != nil {
 		return axerror.New("project.read", "cannot read speaker track: "+err.Error()).AsRetryable()
 	}
+	// Prefer where detection actually found each speaker over the default
+	// seating plan, so the framing works on a set this tool has never seen.
+	req.LeftCentre = seatCentre(speakers, "left", req.LeftCentre)
+	req.RightCentre = seatCentre(speakers, "right", req.RightCentre)
 
 	// 1. Find the moments worth cutting.
 	sw, err := resolveSearchWorker(searchRequest{
