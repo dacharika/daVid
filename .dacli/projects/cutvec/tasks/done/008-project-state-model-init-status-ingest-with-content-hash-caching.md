@@ -116,3 +116,7 @@ every step is resumable and an agent can read the whole project graph
 - 2026-08-10T21:08:20Z verified by `go build ./... && go test ./...` (exit 0)
 - 2026-08-10T21:08:20Z deliverable: dacli/008-project-state-model-init-status-ingest-with-content-hash-caching is merged into main
 - 2026-08-10T21:08:20Z completed by a-root
+- 2026-08-10T21:20:06Z accepted by a-root
+- 2026-08-10T21:20:06Z verified by `go build ./... && go test ./...` (exit 0)
+- 2026-08-10T21:20:06Z deliverable: dacli/008-project-state-model-init-status-ingest-with-content-hash-caching is merged into main
+- 2026-08-10T21:20:06Z completed by a-root

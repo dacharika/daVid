@@ -17,3 +17,5 @@ a multi-clip 'timeline' build plays as one ordered edit instead of silently losi
 - [ ] go build ./... and go test ./... both exit 0; gofmt clean; distinct from tasks 029 (hook/caption SRT overlap) and 030 (audio bed gain) — do not touch their scope
 ## Log
 - 2026-08-10T20:57:57Z adopted by a-root (owner a-go-auditor-emr68x orphaned)
+- 2026-08-10T21:20:14Z claimed by a-fixer-tg912m
+- 2026-08-10T21:23:15Z a-fixer-tg912m: PR opened: https://github.com/mlnomadpy/cutvec/pull/35 (event 01KZPRXBVPPHQCJ5BA3D9CZ9DG)

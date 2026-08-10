@@ -22,16 +22,106 @@ type Timeline struct {
 
 // Playlist is an MLT <playlist>: producers played in order. A cut sequence — an
 // edit that switches between framings — is a playlist of trimmed producers.
+//
+// A playlist's children are two DIFFERENT MLT elements — <entry producer="..."/>
+// for a real producer and <blank length="..."/> for a gap — so Playlist carries
+// its own MarshalXML/UnmarshalXML to emit and parse each Entry as the right
+// element. A blank must be a real <blank>: MLT treats an <entry length="..."> as
+// a malformed producer entry, not the leading silence a delayed sting needs.
 type Playlist struct {
-	ID      string  `xml:"id,attr"`
-	Entries []Entry `xml:"entry"`
+	ID      string
+	Entries []Entry
 }
 
-// Entry places a producer in a playlist. Blank is an empty span of the given
-// length instead — how MLT delays a producer's entry on its track.
+// Entry places a producer in a playlist, or — when Blank is set — reserves an
+// empty span of that length instead. Blank is how MLT delays a producer's entry
+// on its track (the seconds of silence before a sting or bed comes in); an entry
+// with Blank set marshals to <blank length="..."/>, otherwise to
+// <entry producer="..."/>.
 type Entry struct {
-	Producer string `xml:"producer,attr,omitempty"`
-	Blank    string `xml:"length,attr,omitempty"`
+	Producer string
+	Blank    string
+}
+
+// MarshalXML writes the playlist and each of its children as the correct MLT
+// element: <blank length="..."/> for a gap, <entry producer="..."/> for a real
+// producer. Marshaling entries uniformly as <entry> would emit an
+// <entry length="..."> for a blank, which MLT does not treat as a gap.
+func (pl Playlist) MarshalXML(e *xml.Encoder, start xml.StartElement) error {
+	start.Name = xml.Name{Local: "playlist"}
+	start.Attr = []xml.Attr{{Name: xml.Name{Local: "id"}, Value: pl.ID}}
+	if err := e.EncodeToken(start); err != nil {
+		return err
+	}
+	for _, ent := range pl.Entries {
+		var child xml.StartElement
+		if ent.Blank != "" {
+			child = xml.StartElement{
+				Name: xml.Name{Local: "blank"},
+				Attr: []xml.Attr{{Name: xml.Name{Local: "length"}, Value: ent.Blank}},
+			}
+		} else {
+			child = xml.StartElement{
+				Name: xml.Name{Local: "entry"},
+				Attr: []xml.Attr{{Name: xml.Name{Local: "producer"}, Value: ent.Producer}},
+			}
+		}
+		if err := e.EncodeToken(child); err != nil {
+			return err
+		}
+		if err := e.EncodeToken(xml.EndElement{Name: child.Name}); err != nil {
+			return err
+		}
+	}
+	return e.EncodeToken(xml.EndElement{Name: start.Name})
+}
+
+// UnmarshalXML is the inverse of MarshalXML: it reads a <playlist> back into the
+// model, mapping each <entry producer="..."/> and <blank length="..."/> child to
+// an Entry so a round-trip preserves a delayed bed's leading gap.
+func (pl *Playlist) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
+	for _, a := range start.Attr {
+		if a.Name.Local == "id" {
+			pl.ID = a.Value
+		}
+	}
+	for {
+		tok, err := d.Token()
+		if err != nil {
+			return err
+		}
+		switch el := tok.(type) {
+		case xml.StartElement:
+			var ent Entry
+			switch el.Name.Local {
+			case "entry":
+				for _, a := range el.Attr {
+					if a.Name.Local == "producer" {
+						ent.Producer = a.Value
+					}
+				}
+			case "blank":
+				for _, a := range el.Attr {
+					if a.Name.Local == "length" {
+						ent.Blank = a.Value
+					}
+				}
+			default:
+				if err := d.Skip(); err != nil {
+					return err
+				}
+				continue
+			}
+			if err := d.Skip(); err != nil {
+				return err
+			}
+			pl.Entries = append(pl.Entries, ent)
+		case xml.EndElement:
+			if el.Name.Local == start.Name.Local {
+				return nil
+			}
+		}
+	}
 }
 
 // Tractor is an MLT <tractor>: what the consumer actually renders. A timeline
