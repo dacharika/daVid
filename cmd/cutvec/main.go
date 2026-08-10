@@ -58,6 +58,8 @@ func run(args []string, stdin io.Reader, stdout io.Writer) error {
 		return shortsCmd(args[1:], stdin, stdout)
 	case "reframe-edit":
 		return reframeCmd(args[1:], stdin, stdout)
+	case "assets":
+		return assetsCmd(args[1:], stdin, stdout)
 	case "filters":
 		return filtersCmd(args[1:], stdin, stdout)
 	case "timeline":

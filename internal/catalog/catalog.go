@@ -327,6 +327,32 @@ func Default() Catalog {
 				},
 			},
 			{
+				Name:    "assets",
+				Summary: "Search a library of sounds and b-roll by description, or index one. `assets index <dir>` embeds a media library; `assets search \"<description>\"` returns ranked refs to place on a timeline. Unannotated files are described by their own path, and a sidecar .txt overrides that.",
+				InputSchema: Schema{
+					"type":     "object",
+					"required": []any{"project"},
+					"properties": map[string]any{
+						"project":    map[string]any{"type": "string", "description": "the project directory the asset index lives in"},
+						"dir":        map[string]any{"type": "string", "description": "index only: the library directory to walk (also accepted as the positional argument)"},
+						"query":      map[string]any{"type": "string", "description": "search only: what the sound or clip should be (also accepted as the positional argument)"},
+						"limit":      map[string]any{"type": "integer", "description": "search only: cap on ranked results; defaults to 10"},
+						"worker":     map[string]any{"type": "string", "description": "path to the index worker (for index) or search worker (for search)"},
+						"workerArgs": map[string]any{"type": "array", "description": "fixed leading arguments for the worker", "items": map[string]any{"type": "string"}},
+					},
+				},
+				OutputSchema: Schema{
+					"type": "object",
+					"properties": map[string]any{
+						"table":  map[string]any{"type": "string", "description": "index only: handle to the asset table"},
+						"assets": map[string]any{"type": "array", "description": "index: how many assets were embedded. search: ranked hits, each with the ref to place, the text it matched on, and a score"},
+						"dim":    map[string]any{"type": "integer", "description": "index only: embedding dimensionality"},
+						"model":  map[string]any{"type": "string", "description": "the local embedding model used"},
+						"query":  map[string]any{"type": "string", "description": "search only: the query that was run"},
+					},
+				},
+			},
+			{
 				Name:    "filters",
 				Summary: "Discover what MLT can do on this machine: search the installed filter registry (several hundred, including the whole avfilter set) and get a filter's parameters. Use it to find a service name for `timeline`'s effects instead of guessing.",
 				InputSchema: Schema{
