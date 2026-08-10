@@ -15,3 +15,4 @@ the crop-filter helpers in internal/timeline stop carrying a black-rendering dea
 - [ ] Reword CropWindow's doc comment (timeline.go:226-228) so it no longer asserts the use_profile edge form renders black or is a no-op — task 027 verified crop+use_profile=1+explicit-edges crops-and-fills and PunchIn depends on it in production; note the real hazard is combining center=1 WITH explicit edges (which pads to black), per the d-keep-punchins-use-profile decision.
 - [ ] go build ./... and go test ./... both exit 0; gofmt, go vet, and staticcheck are clean
 ## Log
+- 2026-08-10T18:10:53Z claimed by a-fixer-b774vg
