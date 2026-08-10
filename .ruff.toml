@@ -1,0 +1,23 @@
+# Lint config for the Python workers.
+#
+# The workers are small, single-purpose scripts behind a JSON contract, so the
+# rules that matter are the ones that catch real breakage — unused names,
+# undefined references, mutable default arguments, bare excepts that would
+# swallow the structured error the contract depends on.
+line-length = 100
+target-version = "py311"
+
+[lint]
+select = ["E", "F", "W", "B", "UP", "SIM", "RET"]
+ignore = [
+  "E501",    # long lines are usually explanatory comments, which are wanted here
+  "SIM105",  # contextlib.suppress reads worse than try/except in these scripts
+]
+
+[lint.per-file-ignores]
+# Workers deliberately catch broad exceptions: an unexpected failure must still
+# come back as a JSON Response, never as a traceback on stdout.
+"cutvec_worker.py" = ["BLE001"]
+
+[format]
+quote-style = "double"

@@ -180,3 +180,45 @@ func TestMCPUnknownMethodIsMethodNotFound(t *testing.T) {
 		t.Errorf("code = %v, want %d (method not found)", rpcErr["code"], codeMethodNotFound)
 	}
 }
+
+// The stdio loop once spun forever on a malformed frame, because a streaming
+// decoder cannot advance past a syntax error. That bug was a hang, not a crash,
+// so it survived every example-based test until one happened to include a bad
+// frame. Fuzzing the frame reader is the check that generalises: whatever the
+// input, the loop must terminate and emit only well-formed JSON-RPC.
+func FuzzMCPFrames(f *testing.F) {
+	f.Add(`{"jsonrpc":"2.0","id":1,"method":"tools/list"}`)
+	f.Add(`{"jsonrpc":"2.0","method":"notifications/initialized"}`)
+	f.Add(`{"jsonrpc":"2.0",,,}`)
+	f.Add(`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"describe"}}`)
+	f.Add("")
+	f.Add("\n\n\n")
+	f.Add(`{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":""}}`)
+
+	f.Fuzz(func(t *testing.T, frame string) {
+		var out bytes.Buffer
+		// A frame is one line by definition; embedded newlines would just be
+		// separate frames and are not what this is exercising.
+		frame = strings.ReplaceAll(frame, "\n", " ")
+		if err := mcpServe(strings.NewReader(frame+"\n"), &out); err != nil {
+			t.Fatalf("serve returned an error for input %q: %v", frame, err)
+		}
+		// Whatever came back must be decodable JSON-RPC: a client that cannot
+		// parse our reply is as stuck as one we never replied to.
+		dec := json.NewDecoder(&out)
+		for dec.More() {
+			var msg map[string]any
+			if err := dec.Decode(&msg); err != nil {
+				t.Fatalf("emitted invalid JSON for input %q: %v", frame, err)
+			}
+			if msg["jsonrpc"] != "2.0" {
+				t.Fatalf("reply is not JSON-RPC 2.0 for input %q: %v", frame, msg)
+			}
+			_, hasResult := msg["result"]
+			_, hasError := msg["error"]
+			if hasResult == hasError {
+				t.Fatalf("reply must carry exactly one of result/error, got %v", msg)
+			}
+		}
+	})
+}
