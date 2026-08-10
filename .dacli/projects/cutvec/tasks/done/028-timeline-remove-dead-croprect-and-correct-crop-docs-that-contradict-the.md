@@ -94,3 +94,7 @@ the crop-filter helpers in internal/timeline stop carrying a black-rendering dea
 - 2026-08-10T21:37:08Z verified by `go build ./... && go test ./...` (exit 0)
 - 2026-08-10T21:37:08Z deliverable: no dacli/028-timeline-remove-dead-croprect-and-correct-crop-docs-that-contradict-the branch — nothing to check against main
 - 2026-08-10T21:37:08Z completed by a-root
+- 2026-08-10T21:46:48Z accepted by a-root
+- 2026-08-10T21:46:48Z verified by `go build ./... && go test ./...` (exit 0)
+- 2026-08-10T21:46:48Z deliverable: no dacli/028-timeline-remove-dead-croprect-and-correct-crop-docs-that-contradict-the branch — nothing to check against main
+- 2026-08-10T21:46:48Z completed by a-root
