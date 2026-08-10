@@ -1368,20 +1368,32 @@ func renderCmd(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 	if err := os.MkdirAll(proj.CacheDir(), 0o755); err != nil {
 		return axerror.New("project.write", "cannot create cache directory: "+err.Error()).AsRetryable()
 	}
+	// Render to a temp path and publish atomically: a melt that dies mid-encode
+	// leaves only the discarded .tmp, never a truncated mp4 at the cache path that
+	// the next resumed run would return as a completed cache hit. We os.Rename onto
+	// the cache path only after the worker fully succeeds AND wrote its output.
+	tmp := out + ".tmp"
+	_ = os.Remove(tmp) // clear any stale temp from a previously interrupted run
 	if err := progress.While(stderr, "render", progressInterval(), func() error {
 		_, e := w.Invoke(context.Background(), worker.Request{
 			Op:     "render",
-			Params: map[string]any{"timeline": tlPath, "output": out, "quality": quality},
+			Params: map[string]any{"timeline": tlPath, "output": tmp, "quality": quality},
 		})
 		return e
 	}); err != nil {
-		return err // already an *axerror.Error from the worker boundary
+		os.Remove(tmp) // a crashed worker's partial bytes must not survive
+		return err     // already an *axerror.Error from the worker boundary
 	}
 	// The worker's contract is to write the rendered video to the requested output
 	// path; a run that returns success without it is a protocol violation.
-	if _, err := os.Stat(out); err != nil {
+	if _, err := os.Stat(tmp); err != nil {
+		os.Remove(tmp)
 		return axerror.New("worker.protocol", "render worker did not write the output file").
 			WithHint("the melt worker must write the rendered video to the requested output path").AsRetryable()
+	}
+	if err := os.Rename(tmp, out); err != nil {
+		os.Remove(tmp)
+		return axerror.New("project.write", "cannot publish rendered output: "+err.Error()).AsRetryable()
 	}
 	return emitJSON(stdout, renderResult{
 		Output:   out,
