@@ -111,3 +111,7 @@ an agent can discover every command and its typed IO, and the same catalog backs
 - 2026-08-10T19:48:51Z verified by `go build ./... && go test ./...` (exit 0)
 - 2026-08-10T19:48:51Z deliverable: dacli/007-describe-schema-commands-emit-the-tool-catalog-with-json-schemas is merged into trunk
 - 2026-08-10T19:48:51Z completed by a-root
+- 2026-08-10T21:08:19Z accepted by a-root
+- 2026-08-10T21:08:19Z verified by `go build ./... && go test ./...` (exit 0)
+- 2026-08-10T21:08:19Z deliverable: dacli/007-describe-schema-commands-emit-the-tool-catalog-with-json-schemas is merged into main
+- 2026-08-10T21:08:19Z completed by a-root
