@@ -18,7 +18,7 @@ import json
 from pathlib import Path
 
 import embedder
-from cutvec_worker import WorkerError, log, need, require_module, serve
+from cutvec_worker import WorkerError, log, need, require_module, serve_ops
 
 SEG_MAX_SEC = 12.0     # a segment never spans more than this
 SEG_MIN_SEC = 4.0      # ...and is closed once it is at least this long
@@ -105,5 +105,48 @@ def handle(params: dict) -> dict:
     }
 
 
+def handle_assets(params: dict) -> dict:
+    """Embed a labelled asset library so sounds can be found by description.
+
+    Assets carry no timeline of their own, so unlike transcript segments each
+    row is keyed by a reference — the path an editor will actually place — and
+    the text is whatever describes it: a filename, a sidecar note, tags.
+    """
+    items = params.get("items") or []
+    table_path = need(params, "table")
+    if not items:
+        raise WorkerError(
+            "input.empty", "no assets to index",
+            hint="pass items as [{\"ref\": \"/path/to.wav\", \"text\": \"deep impact hit\"}]",
+        )
+    lancedb = require_module("lancedb", "pip install lancedb")
+
+    rows_in = []
+    for i, it in enumerate(items):
+        ref = (it.get("ref") or "").strip()
+        text = (it.get("text") or "").strip()
+        if not ref:
+            raise WorkerError("input.invalid", f"asset {i} has no ref",
+                              hint="every asset needs a ref: the path to place on a timeline")
+        rows_in.append((ref, text or ref))
+
+    emb = embedder.load()
+    vectors = emb.encode([t for _, t in rows_in])
+    dim = len(vectors[0]) if vectors else 0
+    if not dim:
+        raise WorkerError("worker.crashed", "embedding backend returned no vectors",
+                          hint="check the embedding model downloaded correctly", retryable=True)
+
+    table_dir = Path(table_path)
+    table_dir.parent.mkdir(parents=True, exist_ok=True)
+    db = lancedb.connect(str(table_dir.parent))
+    name = table_dir.name.removesuffix(".lance")
+    rows = [{"vector": v, "ref": ref, "text": text}
+            for (ref, text), v in zip(rows_in, vectors)]
+    db.create_table(name, data=rows, mode="overwrite")
+    log(f"indexed {len(rows)} assets (dim {dim}) into {table_dir}")
+    return {"table": str(table_dir), "assets": len(rows), "dim": dim, "model": emb.label}
+
+
 if __name__ == "__main__":
-    serve("index", handle)
+    serve_ops({"index": handle, "index_assets": handle_assets})

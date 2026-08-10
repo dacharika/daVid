@@ -17,7 +17,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import embedder
-from cutvec_worker import WorkerError, log, need, require_module, serve
+from cutvec_worker import WorkerError, log, need, require_module, serve_ops
 
 DEFAULT_LIMIT = 10
 
@@ -68,5 +68,34 @@ def handle(params: dict) -> dict:
     return {"candidates": candidates, "model": emb.label}
 
 
+def handle_assets(params: dict) -> dict:
+    """Find assets by description, returning the refs to place on a timeline."""
+    query = need(params, "query")
+    table_path = need(params, "table")
+    limit = int(params.get("limit") or DEFAULT_LIMIT)
+    if limit <= 0:
+        limit = DEFAULT_LIMIT
+
+    table_dir = Path(table_path)
+    if not table_dir.exists():
+        raise WorkerError("index.missing", f"no asset index at {table_path}",
+                          hint="run `cutvec assets index` before searching assets")
+    lancedb = require_module("lancedb", "pip install lancedb")
+    db = lancedb.connect(str(table_dir.parent))
+    name = table_dir.name.removesuffix(".lance")
+    try:
+        table = db.open_table(name)
+    except Exception as exc:
+        raise WorkerError("index.missing", f"cannot open asset table {name!r}: {exc}",
+                          hint="re-run `cutvec assets index` to rebuild it") from exc
+
+    emb = embedder.load()
+    rows = table.search(emb.encode([query])[0]).limit(limit).to_list()
+    assets = [{"ref": r.get("ref", ""), "text": r.get("text", ""),
+               "score": to_score(r.get("_distance", 0.0))} for r in rows]
+    log(f"asset query {query!r} -> {len(assets)} hits")
+    return {"assets": assets, "model": emb.label}
+
+
 if __name__ == "__main__":
-    serve("search", handle)
+    serve_ops({"search": handle, "search_assets": handle_assets})
