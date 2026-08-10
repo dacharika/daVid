@@ -22,3 +22,7 @@ search retrieves moments semantically instead of scanning the transcript
 - 2026-08-06T08:35:48Z accepted by a-root
 - 2026-08-06T08:35:48Z verified by `go build ./... && go test ./...` (exit 0)
 - 2026-08-06T08:35:48Z completed by a-root
+- 2026-08-10T16:55:01Z accepted by a-root
+- 2026-08-10T16:55:01Z verified by `go build ./... && go test ./...` (exit 0)
+- 2026-08-10T16:55:01Z deliverable: no dacli/013-index-command-embed-transcript-segments-into-lancedb-local-embeddings branch — nothing to check against trunk
+- 2026-08-10T16:55:01Z completed by a-root

@@ -539,6 +539,35 @@ func Default() Catalog {
 					},
 				},
 			},
+			{
+				Name:        "doctor",
+				Summary:     "Preflight the whole environment in one call: report every binary, worker, python package, and model as ok/missing with an install hint, and fail when a required one is missing.",
+				InputSchema: objectSchema(),
+				OutputSchema: Schema{
+					"type": "object",
+					"properties": map[string]any{
+						"ok":              map[string]any{"type": "boolean", "description": "true when no required dependency is missing"},
+						"missing":         map[string]any{"type": "integer", "description": "count of every missing check, required or not"},
+						"requiredMissing": map[string]any{"type": "integer", "description": "count of missing checks that fail the preflight"},
+						"missingNames":    map[string]any{"type": "array", "description": "names of the missing required dependencies", "items": map[string]any{"type": "string"}},
+						"checks": map[string]any{
+							"type":        "array",
+							"description": "every dependency probed, in checklist order",
+							"items": map[string]any{
+								"type": "object",
+								"properties": map[string]any{
+									"name":     map[string]any{"type": "string", "description": "the dependency's name"},
+									"kind":     map[string]any{"type": "string", "enum": []any{"binary", "worker", "package", "model"}, "description": "class of dependency"},
+									"required": map[string]any{"type": "boolean", "description": "true when a pipeline cannot run without it"},
+									"status":   map[string]any{"type": "string", "enum": []any{"ok", "missing"}, "description": "whether the dependency was found"},
+									"detail":   map[string]any{"type": "string", "description": "resolved path or a short note, when available"},
+									"hint":     map[string]any{"type": "string", "description": "how to install or configure a missing dependency"},
+								},
+							},
+						},
+					},
+				},
+			},
 		},
 	}
 }

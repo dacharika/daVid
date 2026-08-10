@@ -22,3 +22,7 @@ the editor knows who is speaking when, for reframing and speaker-locked shorts
 - 2026-08-06T08:17:34Z verified by `go build ./... && go test ./...` (exit 0)
 - 2026-08-06T08:17:34Z completed by a-root
 - 2026-08-06T08:17:34Z a-fixer-72cctq: PR opened: https://github.com/mlnomadpy/cutvec/pull/10 (event 01KZB1WRMWEB9FE1VQ33VS6KQT)
+- 2026-08-10T16:55:01Z accepted by a-root
+- 2026-08-10T16:55:01Z verified by `go build ./... && go test ./...` (exit 0)
+- 2026-08-10T16:55:01Z deliverable: no dacli/012-speakers-command-active-speaker-detection-via-mediapipe-worker branch — nothing to check against trunk
+- 2026-08-10T16:55:01Z completed by a-root
