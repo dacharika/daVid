@@ -93,13 +93,29 @@ def run_tool(argv: list[str], what: str) -> subprocess.CompletedProcess:
     return proc
 
 
-def serve(op_name: str, handler) -> None:
-    """Read the Request, dispatch to handler(params) -> result, write the Response.
+def serve_ops(handlers: dict) -> None:
+    """Serve a worker that answers several ops, dispatching on the request's op.
 
-    handler returns the result mapping; any WorkerError becomes a structured
+    Workers that wrap one tool often expose more than one capability — melt both
+    renders and reports what filters it has — and keeping them in one executable
+    means one thing to install and configure.
+    """
+    _serve(handlers)
+
+
+def serve(op_name: str, handler) -> None:
+    """Serve a worker that answers exactly one op."""
+    _serve({op_name: handler})
+
+
+def _serve(handlers: dict) -> None:
+    """Read the Request, dispatch to the op's handler, write the Response.
+
+    A handler returns the result mapping; any WorkerError becomes a structured
     error response, and an unexpected exception becomes a retryable
     worker.crashed carrying the traceback's last line.
     """
+    known = sorted(handlers)
     try:
         raw = sys.stdin.read()
         try:
@@ -117,12 +133,15 @@ def serve(op_name: str, handler) -> None:
                 f"core speaks protocol version {version}, worker speaks {CONTRACT_VERSION}",
                 hint="upgrade the worker or the cutvec core so both speak the same version",
             )
-        got_op = req.get("op", op_name)
-        if got_op != op_name:
+        # A single-op worker keeps answering a request that omits the op.
+        got_op = req.get("op") or (known[0] if len(known) == 1 else "")
+        handler = handlers.get(got_op)
+        if handler is None:
             raise WorkerError(
                 "input.invalid",
-                f"this worker handles op {op_name!r}, got {got_op!r}",
-                hint=f"invoke the {op_name} worker for this operation",
+                f"this worker handles {', '.join(repr(k) for k in known)}, got {got_op!r}",
+                hint=f"invoke a worker that implements {got_op!r}" if got_op
+                     else f'set "op" to one of: {", ".join(known)}',
             )
 
         result = handler(req.get("params") or {})

@@ -327,6 +327,51 @@ func Default() Catalog {
 				},
 			},
 			{
+				Name:    "filters",
+				Summary: "Discover what MLT can do on this machine: search the installed filter registry (several hundred, including the whole avfilter set) and get a filter's parameters. Use it to find a service name for `timeline`'s effects instead of guessing.",
+				InputSchema: Schema{
+					"type": "object",
+					"properties": map[string]any{
+						"query":      map[string]any{"type": "string", "description": "substring to search filter names for, e.g. 'denoise' or 'color' (also accepted as the first positional argument); omit to list everything"},
+						"name":       map[string]any{"type": "string", "description": "exact filter name to describe, e.g. 'avfilter.curves'; returns its full parameter list"},
+						"limit":      map[string]any{"type": "integer", "description": "cap on filters returned; defaults to 40. Parameters are only expanded for focused result sets"},
+						"worker":     map[string]any{"type": "string", "description": "path to the melt worker; defaults to the CUTVEC_MELT_WORKER env var"},
+						"workerArgs": map[string]any{"type": "array", "description": "fixed leading arguments for the worker", "items": map[string]any{"type": "string"}},
+					},
+				},
+				OutputSchema: Schema{
+					"type": "object",
+					"properties": map[string]any{
+						"filters": map[string]any{
+							"type":        "array",
+							"description": "matching MLT filters",
+							"items": map[string]any{
+								"type": "object",
+								"properties": map[string]any{
+									"name":        map[string]any{"type": "string", "description": "the mlt_service name to use in a timeline effect"},
+									"description": map[string]any{"type": "string", "description": "what the filter does"},
+									"params": map[string]any{
+										"type":        "array",
+										"description": "the filter's parameters; avfilter wrappers prefix theirs with 'av.'",
+										"items": map[string]any{
+											"type": "object",
+											"properties": map[string]any{
+												"name":        map[string]any{"type": "string"},
+												"type":        map[string]any{"type": "string"},
+												"description": map[string]any{"type": "string"},
+											},
+										},
+									},
+								},
+							},
+						},
+						"count":   map[string]any{"type": "integer", "description": "how many filters matched the query"},
+						"total":   map[string]any{"type": "integer", "description": "how many filters MLT has registered in total"},
+						"presets": map[string]any{"type": "array", "description": "cutvec's named filter chains, usable directly as a timeline effect", "items": map[string]any{"type": "string"}},
+					},
+				},
+			},
+			{
 				Name:    "reframe-edit",
 				Summary: "Recipe: cut a single locked-off wide shot into an edit that looks multi-camera — punch in on whoever is speaking, fall back to the wide two-shot when nobody is, and render. Requires a source with a speaker track.",
 				InputSchema: Schema{
@@ -387,6 +432,19 @@ func Default() Catalog {
 								"properties": map[string]any{
 									"id":       map[string]any{"type": "string", "description": "producer id; defaults to producerN"},
 									"resource": map[string]any{"type": "string", "description": "path to the media file"},
+								},
+							},
+						},
+						"effects": map[string]any{
+							"type":        "array",
+							"description": "MLT filters attached to the timeline, applied in order. Each effect is either a named preset or one MLT service — run `cutvec filters` to discover services and their parameters.",
+							"items": map[string]any{
+								"type": "object",
+								"properties": map[string]any{
+									"preset":     map[string]any{"type": "string", "description": "a named filter chain: grade, denoise, denoise-strong, loudness, warm"},
+									"service":    map[string]any{"type": "string", "description": "an MLT filter name, e.g. 'avfilter.curves' or 'lift_gamma_gain'"},
+									"properties": map[string]any{"type": "object", "description": "the service's properties; avfilter wrappers prefix theirs with 'av.'"},
+									"producer":   map[string]any{"type": "string", "description": "limit the effect to one producer id; omit to apply it to every clip"},
 								},
 							},
 						},
