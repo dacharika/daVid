@@ -42,3 +42,7 @@ the editor knows who is speaking when, for reframing and speaker-locked shorts
 - 2026-08-10T18:10:47Z verified by `go build ./... && go test ./...` (exit 0)
 - 2026-08-10T18:10:47Z deliverable: no dacli/012-speakers-command-active-speaker-detection-via-mediapipe-worker branch — nothing to check against trunk
 - 2026-08-10T18:10:47Z completed by a-root
+- 2026-08-10T18:19:15Z accepted by a-root
+- 2026-08-10T18:19:15Z verified by `go build ./... && go test ./...` (exit 0)
+- 2026-08-10T18:19:15Z deliverable: no dacli/012-speakers-command-active-speaker-detection-via-mediapipe-worker branch — nothing to check against trunk
+- 2026-08-10T18:19:15Z completed by a-root
