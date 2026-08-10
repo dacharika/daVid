@@ -156,6 +156,27 @@ returns `project.uninitialized`; a project with no built timeline returns
 `timeline.missing`; no configured worker returns `worker.missing`; and a worker
 that crashes or does not write the output maps to `worker.crashed`/`worker.protocol`.
 
+## Progress: watch a long step advance
+
+The long steps — `transcribe`, `speakers`, and `render` — write newline-delimited
+JSON progress events to **stderr** while their worker runs, so a caller can tell a
+slow run from a hung one. **stdout is untouched**: it still carries exactly one JSON
+result, so the machine-readable contract is unchanged and the progress channel is
+safe to ignore. Each event is one object per line, opening with `start`, beating
+`heartbeat` every couple of seconds (override with `CUTVEC_PROGRESS_INTERVAL`, e.g.
+`5s`), and closing with `done` (or `error`):
+
+```sh
+./build/cutvec render proj --json > result.json 2> progress.jsonl < /dev/null
+# progress.jsonl:
+# {"kind":"progress","step":"render","phase":"start","seq":0,"elapsed_s":0}
+# {"kind":"progress","step":"render","phase":"heartbeat","seq":1,"elapsed_s":2.01}
+# {"kind":"progress","step":"render","phase":"done","seq":2,"elapsed_s":3.4}
+# result.json: exactly one JSON result, as always
+```
+
+A cache hit or `--plan` runs no worker, so it returns immediately and emits nothing.
+
 ## Doctor: preflight the whole environment in one call
 
 `doctor` probes every dependency the pipeline needs — external binaries
@@ -191,6 +212,7 @@ internal/project/   explicit project-dir state: content-hash cache, resumable st
 internal/worker/    versioned JSON contract to the Python ML workers (subprocesses)
 internal/timeline/  in-memory MLT XML timeline the agent edits, rendered via melt
 internal/doctor/    environment preflight — every binary, worker, package, model
+internal/progress/  JSONL progress events on stderr around the long worker steps
 
 ```
 

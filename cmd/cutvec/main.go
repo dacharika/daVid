@@ -14,17 +14,31 @@ import (
 	"os/exec"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/tahabsn/cutvec/internal/axerror"
 	"github.com/tahabsn/cutvec/internal/catalog"
 	"github.com/tahabsn/cutvec/internal/doctor"
+	"github.com/tahabsn/cutvec/internal/progress"
 	"github.com/tahabsn/cutvec/internal/project"
 	"github.com/tahabsn/cutvec/internal/timeline"
 	"github.com/tahabsn/cutvec/internal/worker"
 )
 
+// progressInterval is how often the long steps heartbeat on stderr. It defaults
+// to progress's own cadence and can be overridden with CUTVEC_PROGRESS_INTERVAL
+// (any Go duration, e.g. "5s"); an unparseable value falls back to the default.
+func progressInterval() time.Duration {
+	if v := os.Getenv("CUTVEC_PROGRESS_INTERVAL"); v != "" {
+		if d, err := time.ParseDuration(v); err == nil && d > 0 {
+			return d
+		}
+	}
+	return 0 // progress.While treats non-positive as its own default cadence
+}
+
 func main() {
-	if err := run(os.Args[1:], os.Stdin, os.Stdout); err != nil {
+	if err := run(os.Args[1:], os.Stdin, os.Stdout, os.Stderr); err != nil {
 		emitError(err)
 		os.Exit(1)
 	}
@@ -33,9 +47,19 @@ func main() {
 // run dispatches a subcommand. Tools read their JSON request from stdin and
 // write their JSON result to stdout; both streams are passed in so the dispatch
 // is testable without touching the process's real file descriptors.
-func run(args []string, stdin io.Reader, stdout io.Writer) error {
+//
+// stderr is an optional side channel for progress events on the long steps
+// (transcribe, speakers, render). It is variadic so the many callers that only
+// care about the JSON result on stdout stay three-argument; when omitted (or
+// nil) progress is discarded and the observable contract — exactly one JSON
+// result on stdout — is unchanged.
+func run(args []string, stdin io.Reader, stdout io.Writer, stderr ...io.Writer) error {
 	if len(args) == 0 {
 		return usage()
+	}
+	var progressOut io.Writer = io.Discard
+	if len(stderr) > 0 && stderr[0] != nil {
+		progressOut = stderr[0]
 	}
 	switch args[0] {
 	case "describe":
@@ -49,13 +73,13 @@ func run(args []string, stdin io.Reader, stdout io.Writer) error {
 	case "status":
 		return statusCmd(args[1:], stdin, stdout)
 	case "transcribe":
-		return transcribeCmd(args[1:], stdin, stdout)
+		return transcribeCmd(args[1:], stdin, stdout, progressOut)
 	case "index":
 		return indexCmd(args[1:], stdin, stdout)
 	case "search":
 		return searchCmd(args[1:], stdin, stdout)
 	case "speakers":
-		return speakersCmd(args[1:], stdin, stdout)
+		return speakersCmd(args[1:], stdin, stdout, progressOut)
 	case "shorts":
 		return shortsCmd(args[1:], stdin, stdout)
 	case "reframe-edit":
@@ -67,7 +91,7 @@ func run(args []string, stdin io.Reader, stdout io.Writer) error {
 	case "timeline":
 		return timelineCmd(args[1:], stdin, stdout)
 	case "render":
-		return renderCmd(args[1:], stdin, stdout)
+		return renderCmd(args[1:], stdin, stdout, progressOut)
 	case "doctor":
 		return doctorCmd(args[1:], stdin, stdout)
 	case "mcp":
@@ -475,7 +499,7 @@ type transcribeResult struct {
 // blob. The project may be given as a positional argument (`cutvec transcribe
 // <project>`) or in the JSON request. --plan reports the handle and cache status
 // without running the worker.
-func transcribeCmd(args []string, stdin io.Reader, stdout io.Writer) error {
+func transcribeCmd(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 	posProject, plan, err := parseProjectArgs(args, "transcribe")
 	if err != nil {
 		return err
@@ -535,11 +559,15 @@ func transcribeCmd(args []string, stdin io.Reader, stdout io.Writer) error {
 	if err != nil {
 		return err
 	}
-	resp, err := w.Invoke(context.Background(), worker.Request{
-		Op:     "transcribe",
-		Params: map[string]any{"source": src.Path},
-	})
-	if err != nil {
+	var resp *worker.Response
+	if err := progress.While(stderr, "transcribe", progressInterval(), func() error {
+		var e error
+		resp, e = w.Invoke(context.Background(), worker.Request{
+			Op:     "transcribe",
+			Params: map[string]any{"source": src.Path},
+		})
+		return e
+	}); err != nil {
 		return err // already an *axerror.Error from the worker boundary
 	}
 	t, err := transcriptFromResult(resp.Result)
@@ -1054,7 +1082,7 @@ type speakersResult struct {
 // handle; the JSON result carries the handle, not the turns blob. The project may
 // be given as a positional argument (`cutvec speakers <project>`) or in the JSON
 // request. --plan reports the handle and cache status without running the worker.
-func speakersCmd(args []string, stdin io.Reader, stdout io.Writer) error {
+func speakersCmd(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 	posProject, plan, err := parseSpeakersArgs(args)
 	if err != nil {
 		return err
@@ -1116,11 +1144,15 @@ func speakersCmd(args []string, stdin io.Reader, stdout io.Writer) error {
 	if err != nil {
 		return err
 	}
-	resp, err := w.Invoke(context.Background(), worker.Request{
-		Op:     "speakers",
-		Params: map[string]any{"source": src.Path, "layout": project.TwoPersonLayout},
-	})
-	if err != nil {
+	var resp *worker.Response
+	if err := progress.While(stderr, "speakers", progressInterval(), func() error {
+		var e error
+		resp, e = w.Invoke(context.Background(), worker.Request{
+			Op:     "speakers",
+			Params: map[string]any{"source": src.Path, "layout": project.TwoPersonLayout},
+		})
+		return e
+	}); err != nil {
 		return err // already an *axerror.Error from the worker boundary
 	}
 	s, err := speakersFromResult(resp.Result)
@@ -1239,7 +1271,7 @@ type renderResult struct {
 // (`cutvec render <project>`) or in the JSON request, and the quality tier via
 // --proxy/--final (default proxy) or the request's "quality". --plan reports the
 // handle and cache status without running the worker.
-func renderCmd(args []string, stdin io.Reader, stdout io.Writer) error {
+func renderCmd(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 	posProject, flagQuality, plan, err := parseRenderArgs(args)
 	if err != nil {
 		return err
@@ -1309,9 +1341,12 @@ func renderCmd(args []string, stdin io.Reader, stdout io.Writer) error {
 	if err := os.MkdirAll(proj.CacheDir(), 0o755); err != nil {
 		return axerror.New("project.write", "cannot create cache directory: "+err.Error()).AsRetryable()
 	}
-	if _, err := w.Invoke(context.Background(), worker.Request{
-		Op:     "render",
-		Params: map[string]any{"timeline": tlPath, "output": out, "quality": quality},
+	if err := progress.While(stderr, "render", progressInterval(), func() error {
+		_, e := w.Invoke(context.Background(), worker.Request{
+			Op:     "render",
+			Params: map[string]any{"timeline": tlPath, "output": out, "quality": quality},
+		})
+		return e
 	}); err != nil {
 		return err // already an *axerror.Error from the worker boundary
 	}
