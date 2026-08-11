@@ -1,12 +1,181 @@
 package main
 
 import (
+	"bytes"
+	"encoding/json"
+	"errors"
+	"os"
 	"strings"
 	"testing"
 
+	"github.com/tahabsn/cutvec/internal/axerror"
 	"github.com/tahabsn/cutvec/internal/project"
 	"github.com/tahabsn/cutvec/internal/timeline"
 )
+
+// reframeFixture ingests a source and gives it a speaker track, which is the
+// state reframe-edit requires: it cuts on detected turns, so a project without
+// them has nothing to cut.
+func reframeFixture(t *testing.T, turns []project.Turn) (dir, hash string) {
+	t.Helper()
+	dir, _ = ingestFixture(t, "reframe source bytes")
+	proj := project.Open(dir)
+	m, err := proj.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(m.Sources) != 1 {
+		t.Fatalf("fixture has %d sources, want 1", len(m.Sources))
+	}
+	hash = m.Sources[0].Hash
+	if err := proj.WriteSpeakers(hash, project.Speakers{
+		Source: hash,
+		Layout: project.TwoPersonLayout,
+		Turns:  turns,
+		Seats: map[string]project.Seat{
+			"left":  {CX: 0.30, CY: 0.35, Detections: 100},
+			"right": {CX: 0.70, CY: 0.35, Detections: 100},
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	return dir, hash
+}
+
+// The recipe end to end under --plan: it must compose a gapless shot list from
+// the turns, write the timeline, and render nothing. Until now reframeCmd had no
+// test at all — every other command sits at 70-92% — so the whole path from
+// request to composed edit was only ever checked by hand.
+func TestReframeEditPlansAGaplessEditWithoutRendering(t *testing.T) {
+	dir, _ := reframeFixture(t, []project.Turn{
+		{Speaker: "left", Start: 0, End: 4},
+		{Speaker: "right", Start: 4, End: 9},
+	})
+
+	var out bytes.Buffer
+	if err := run([]string{"reframe-edit", dir, "--plan"}, strings.NewReader("{}"), &out); err != nil {
+		t.Fatalf("reframe-edit --plan = %v, want nil", err)
+	}
+	var res struct {
+		Timeline string  `json:"timeline"`
+		Duration float64 `json:"duration"`
+		Output   string  `json:"output"`
+		Planned  bool    `json:"planned"`
+		Shots    []struct {
+			Shot  string  `json:"shot"`
+			Start float64 `json:"start"`
+			End   float64 `json:"end"`
+		} `json:"shots"`
+	}
+	if err := json.Unmarshal(out.Bytes(), &res); err != nil {
+		t.Fatalf("result is not JSON: %v\n%s", err, out.String())
+	}
+	if !res.Planned {
+		t.Fatalf("planned = false under --plan: %s", out.String())
+	}
+	if res.Output != "" {
+		t.Errorf("--plan reported a rendered output %q; it must render nothing", res.Output)
+	}
+	if len(res.Shots) == 0 {
+		t.Fatalf("no shots planned: %s", out.String())
+	}
+	// The shot list must cover the media with no holes — a gap between shots is
+	// a gap in the rendered video.
+	if res.Shots[0].Start != 0 {
+		t.Errorf("first shot starts at %.3f, want 0", res.Shots[0].Start)
+	}
+	for i := 1; i < len(res.Shots); i++ {
+		if res.Shots[i].Start != res.Shots[i-1].End {
+			t.Errorf("hole between shot %d and %d: %.3f != %.3f",
+				i-1, i, res.Shots[i-1].End, res.Shots[i].Start)
+		}
+	}
+	if last := res.Shots[len(res.Shots)-1].End; last != res.Duration {
+		t.Errorf("shots end at %.3f but duration is %.3f — the tail would not render", last, res.Duration)
+	}
+	// The timeline is a handle, and --plan still writes it so it can be inspected
+	// before committing to a render.
+	if res.Timeline == "" {
+		t.Error("no timeline handle returned")
+	}
+}
+
+// The render half: with a melt worker configured, the recipe renders and returns
+// a handle to a real file.
+func TestReframeEditRendersAndReturnsAHandle(t *testing.T) {
+	dir, _ := reframeFixture(t, []project.Turn{
+		{Speaker: "left", Start: 0, End: 3},
+		{Speaker: "right", Start: 3, End: 6},
+	})
+	wpath, wargs := renderWorkerEnv(t, "render")
+	body, _ := json.Marshal(map[string]any{
+		"renderWorker": wpath, "renderWorkerArgs": wargs, "quality": "proxy",
+	})
+
+	var out bytes.Buffer
+	if err := run([]string{"reframe-edit", dir}, bytes.NewReader(body), &out); err != nil {
+		t.Fatalf("reframe-edit = %v, want nil", err)
+	}
+	var res struct {
+		Output string `json:"output"`
+	}
+	if err := json.Unmarshal(out.Bytes(), &res); err != nil {
+		t.Fatalf("result is not JSON: %v\n%s", err, out.String())
+	}
+	if res.Output == "" {
+		t.Fatalf("no output handle: %s", out.String())
+	}
+	// A handle pointing at nothing is worse than no handle.
+	if _, err := os.Stat(res.Output); err != nil {
+		t.Fatalf("output handle %q does not exist: %v", res.Output, err)
+	}
+}
+
+// Each refusal is a branchable code an agent can act on, so each is pinned.
+func TestReframeEditFailureRules(t *testing.T) {
+	t.Run("no speaker track", func(t *testing.T) {
+		// Ingested but never analysed: the recipe has nothing to cut on.
+		dir, _ := ingestFixture(t, "no speakers here")
+		var out bytes.Buffer
+		err := run([]string{"reframe-edit", dir}, strings.NewReader("{}"), &out)
+		assertReframeCode(t, err, "speakers.missing")
+	})
+
+	t.Run("speaker track with no turns", func(t *testing.T) {
+		// Detection ran but attributed nothing — distinct from never running,
+		// and it needs its own code or an agent cannot tell them apart.
+		dir, _ := reframeFixture(t, nil)
+		var out bytes.Buffer
+		err := run([]string{"reframe-edit", dir}, strings.NewReader("{}"), &out)
+		assertReframeCode(t, err, "speakers.empty")
+	})
+
+	t.Run("uninitialised project", func(t *testing.T) {
+		var out bytes.Buffer
+		err := run([]string{"reframe-edit", t.TempDir()}, strings.NewReader("{}"), &out)
+		assertReframeCode(t, err, "project.uninitialized")
+	})
+
+	t.Run("no project named", func(t *testing.T) {
+		var out bytes.Buffer
+		err := run([]string{"reframe-edit"}, strings.NewReader("{}"), &out)
+		assertReframeCode(t, err, "input.invalid")
+	})
+}
+
+func assertReframeCode(t *testing.T, err error, want string) {
+	t.Helper()
+	var ae *axerror.Error
+	if !errors.As(err, &ae) {
+		t.Fatalf("error = %v, want a structured *axerror.Error with code %q", err, want)
+	}
+	if ae.Code != want {
+		t.Fatalf("code = %q, want %q", ae.Code, want)
+	}
+	if ae.Hint == "" {
+		t.Errorf("code %q carries no hint, so an agent cannot recover from it", ae.Code)
+	}
+}
 
 // The edit must cover the whole media with no holes: a gap between shots is a
 // gap in the rendered video.
