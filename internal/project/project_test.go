@@ -494,10 +494,13 @@ func TestDescribeSourceFingerprintShortcut(t *testing.T) {
 	}
 	src := writeSource(t, "the original bytes")
 
-	first, err := p.DescribeSource(src)
+	// Ingest records the mapping; DescribeSource only consumes it. Recording in
+	// DescribeSource would give --plan, which is built on it, a side effect.
+	ing, err := p.Ingest(src, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
+	first := ing.Source
 	// A second call must agree, and must agree with a from-scratch hash.
 	second, err := p.DescribeSource(src)
 	if err != nil {
@@ -541,11 +544,12 @@ func TestForgetFingerprintForcesAFullRehash(t *testing.T) {
 		t.Fatal(err)
 	}
 	src := writeSource(t, "bytes")
-	got, err := p.DescribeSource(src)
+	ing, err := p.Ingest(src, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	// The mapping is on disk after the first describe.
+	got := ing.Source
+	// The mapping is on disk after the ingest.
 	if entries, _ := filepath.Glob(filepath.Join(p.CacheDir(), "fp-*.txt")); len(entries) != 1 {
 		t.Fatalf("expected exactly one fingerprint entry, got %d", len(entries))
 	}
@@ -584,10 +588,11 @@ func TestFingerprintCatchesSameSizeSameMtimeRewrite(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	first, err := p.DescribeSource(src)
+	ing, err := p.Ingest(src, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
+	first := ing.Source
 
 	// Same length, different bytes, and the clock wound back to match.
 	if err := os.WriteFile(src, []byte("BBBBBBBBBBBBBBBB"), 0o644); err != nil {
@@ -614,5 +619,33 @@ func TestFingerprintCatchesSameSizeSameMtimeRewrite(t *testing.T) {
 	}
 	if want, _ := HashFile(src); changed.Hash != want {
 		t.Fatalf("hash = %q, want %q", changed.Hash, want)
+	}
+}
+
+// DescribeSource backs --plan, so it must not touch the filesystem. An earlier
+// version of the fingerprint shortcut recorded its mapping here, which created
+// the cache directory and turned every dry run into a write. CI caught it; this
+// pins it so it cannot come back.
+func TestDescribeSourceWritesNothing(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "proj")
+	p := Open(dir)
+	if _, _, err := p.Init(""); err != nil {
+		t.Fatal(err)
+	}
+	src := writeSource(t, "some bytes")
+
+	if _, err := p.DescribeSource(src); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(p.CacheDir()); !os.IsNotExist(err) {
+		t.Fatalf("DescribeSource created the cache dir (stat err = %v) — --plan is built on it", err)
+	}
+	// Repeating it still writes nothing, even though the first call had to hash
+	// in full and "knows" something worth recording.
+	if _, err := p.DescribeSource(src); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(p.CacheDir()); !os.IsNotExist(err) {
+		t.Fatalf("a second DescribeSource created the cache dir (stat err = %v)", err)
 	}
 }

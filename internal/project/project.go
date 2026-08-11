@@ -311,6 +311,10 @@ func (p Project) ForgetFingerprint(path string) error {
 	return nil
 }
 
+// DescribeSource is READ-ONLY and must stay that way: --plan is built on it, and
+// a dry run that creates the cache directory is no longer a dry run. Recording
+// the fingerprint→hash mapping is therefore Ingest's job (see rememberFingerprint),
+// on the path that is already writing to the project.
 func (p Project) describeSource(path string, rehash bool) (Source, error) {
 	if !rehash {
 		if fp, err := fingerprint(path); err == nil {
@@ -319,26 +323,30 @@ func (p Project) describeSource(path string, rehash bool) (Source, error) {
 					return Source{ID: hash[:12], Path: path, Hash: hash}, nil
 				}
 			}
-			// Miss: hash in full, then record the mapping so the next call is
-			// the cheap path. A failure to record is not a failure to ingest —
-			// it only costs the next call the full read.
-			hash, err := HashFile(path)
-			if err != nil {
-				return Source{}, err
-			}
-			if mkErr := os.MkdirAll(p.CacheDir(), 0o755); mkErr == nil {
-				_ = os.WriteFile(p.fingerprintPath(fp), []byte(hash), 0o644)
-			}
-			return Source{ID: hash[:12], Path: path, Hash: hash}, nil
 		}
-		// Fingerprinting failed (an unreadable or vanishing file); fall through
-		// so the real error comes from the full read rather than from here.
+		// A fingerprint miss, or an unreadable one, just means paying for the
+		// full read below — never an error of its own.
 	}
 	hash, err := HashFile(path)
 	if err != nil {
 		return Source{}, err
 	}
 	return Source{ID: hash[:12], Path: path, Hash: hash}, nil
+}
+
+// rememberFingerprint records that this file, in this shape, hashes to this
+// value, so the next DescribeSource can skip reading every byte. Called only
+// from Ingest, which is already writing. A failure to record costs the next
+// call a full read and nothing else, so it is never surfaced as an error.
+func (p Project) rememberFingerprint(path, hash string) {
+	fp, err := fingerprint(path)
+	if err != nil {
+		return
+	}
+	if err := os.MkdirAll(p.CacheDir(), 0o755); err != nil {
+		return
+	}
+	_ = os.WriteFile(p.fingerprintPath(fp), []byte(hash), 0o644)
 }
 
 // cachePath is where the cache entry for a content-hash key lives.
@@ -441,6 +449,10 @@ func (p Project) Ingest(path string, prober Prober, deriver Deriver) (IngestResu
 	if err := p.writeCachedSource(src.Hash, src); err != nil {
 		return IngestResult{}, err
 	}
+	// Record the fingerprint last, on the path that is already writing, so the
+	// next describe of these bytes skips the full read. Doing this in
+	// DescribeSource instead would give --plan a side effect.
+	p.rememberFingerprint(path, src.Hash)
 	return IngestResult{Source: src, Cached: false}, nil
 }
 
