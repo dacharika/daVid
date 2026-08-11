@@ -1,6 +1,9 @@
 package main
 
 import (
+	"fmt"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
@@ -400,5 +403,78 @@ func TestJoinTokensDropsPunctuationWithNothingToAttachTo(t *testing.T) {
 	// Punctuation that does have a word before it must still attach.
 	if got := joinTokens([]string{"done", "."}); got != "done." {
 		t.Errorf("joinTokens = %q, want %q", got, "done.")
+	}
+}
+
+// Rendering several shorts at once must not change the answer. Results are
+// written back by index rather than appended on completion, so ranks stay in
+// order and each short keeps the output belonging to its own timeline — the
+// failure this guards is a fast render landing its path on a slower short's
+// record, which would pair rank 1 with rank 3's video and look entirely valid.
+func TestRenderShortsIsOrderStableUnderConcurrency(t *testing.T) {
+	dir := t.TempDir()
+	var out shortsResult
+	const n = 8
+	for i := 1; i <= n; i++ {
+		tl := filepath.Join(dir, fmt.Sprintf("%02d-left.mlt", i))
+		if err := os.WriteFile(tl, []byte("<mlt/>"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		out.Shorts = append(out.Shorts, shortResult{Rank: i, Timeline: tl})
+	}
+	wpath, wargs := renderWorkerEnv(t, "render")
+
+	if err := renderShorts(&out, shortsRequest{
+		RenderWorker: wpath, RenderWorkerArgs: wargs, Quality: "proxy",
+	}); err != nil {
+		t.Fatalf("renderShorts: %v", err)
+	}
+	for i, s := range out.Shorts {
+		if s.Rank != i+1 {
+			t.Errorf("shorts[%d].Rank = %d — order was not preserved", i, s.Rank)
+		}
+		// Each output must belong to its OWN timeline, not a neighbour's.
+		want := strings.TrimSuffix(s.Timeline, ".mlt") + ".mp4"
+		if s.Output != want {
+			t.Errorf("shorts[%d].Output = %q, want %q (a result landed on the wrong short)", i, s.Output, want)
+		}
+		if _, err := os.Stat(s.Output); err != nil {
+			t.Errorf("shorts[%d] output does not exist: %v", i, err)
+		}
+	}
+}
+
+// A render failure must be reported identically on every run. With several
+// renders in flight the naive answer is "whichever goroutine failed first",
+// which makes the same broken input produce different errors run to run.
+func TestRenderShortsReportsTheLowestIndexedFailure(t *testing.T) {
+	dir := t.TempDir()
+	var out shortsResult
+	for i := 1; i <= 4; i++ {
+		tl := filepath.Join(dir, fmt.Sprintf("%02d-left.mlt", i))
+		if err := os.WriteFile(tl, []byte("<mlt/>"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		out.Shorts = append(out.Shorts, shortResult{Rank: i, Timeline: tl})
+	}
+	// render-partial writes nothing, so every short fails the did-it-write
+	// check and the returned error must still be a stable one.
+	wpath, wargs := renderWorkerEnv(t, "render-partial")
+
+	var first error
+	for run := 0; run < 5; run++ {
+		err := renderShorts(&out, shortsRequest{
+			RenderWorker: wpath, RenderWorkerArgs: wargs, Quality: "proxy",
+		})
+		if err == nil {
+			t.Fatal("expected a failure when the worker writes nothing")
+		}
+		if run == 0 {
+			first = err
+			continue
+		}
+		if err.Error() != first.Error() {
+			t.Fatalf("error differs between runs:\n  %v\n  %v", first, err)
+		}
 	}
 }
