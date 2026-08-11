@@ -202,7 +202,7 @@ func assertNoCueOverlap(t *testing.T, cues []srtCue) {
 // The composed timeline is what melt renders, so its shape is the contract:
 // vertical profile, trimmed producer, and both filters present.
 func TestBuildShortTimelineIsVerticalTrimmedAndFiltered(t *testing.T) {
-	tl := buildShortTimeline("/media/in.mp4", 12.5, 20, 0.28, 0.42, 1920, 1080, "/tmp/c.srt")
+	tl := buildShortTimeline("/media/in.mp4", 12.5, 20, 0.28, 0.42, 1920, 1080, "/tmp/c.srt", 0)
 
 	if tl.Profile == nil || tl.Profile.Width != 1080 || tl.Profile.Height != 1920 {
 		t.Fatalf("profile = %+v, want 1080x1920 vertical", tl.Profile)
@@ -247,7 +247,7 @@ func TestBuildShortTimelineIsVerticalTrimmedAndFiltered(t *testing.T) {
 // same person.
 func TestShortTimelineWindowTracksTheSeatColumn(t *testing.T) {
 	leftOf := func(cx float64) int {
-		tl := buildShortTimeline("/m.mp4", 0, 1, cx, 0.42, 1920, 1080, "/c.srt")
+		tl := buildShortTimeline("/m.mp4", 0, 1, cx, 0.42, 1920, 1080, "/c.srt", 0)
 		for _, p := range tl.Producers[0].Filters[0].Properties {
 			if p.Name == "left" {
 				n, err := strconv.Atoi(p.Value)
@@ -476,5 +476,101 @@ func TestRenderShortsReportsTheLowestIndexedFailure(t *testing.T) {
 		if err.Error() != first.Error() {
 			t.Fatalf("error differs between runs:\n  %v\n  %v", first, err)
 		}
+	}
+}
+
+// A push of zero must leave the emitted MLT byte-identical to before the
+// feature existed: no extra filter, and a plain static crop. This is the guard
+// on "adding a capability silently changed every existing edit".
+func TestPushOfZeroChangesNothing(t *testing.T) {
+	tl := buildShortTimeline("/m.mp4", 0, 3, 0.5, 0.4, 1920, 1080, "/c.srt", 0)
+	fs := tl.Producers[0].Filters
+	if len(fs) != 2 {
+		t.Fatalf("push=0 emitted %d filters, want 2 (crop + subtitles)", len(fs))
+	}
+	for _, f := range fs {
+		for _, p := range f.Properties {
+			if strings.Contains(p.Value, ";") {
+				t.Errorf("push=0 emitted an animated property %s=%q", p.Name, p.Value)
+			}
+			if p.Value == "qtblend" {
+				t.Error("push=0 emitted a qtblend zoom filter")
+			}
+		}
+	}
+	if _, ok := timeline.PushZoom(timeline.Vertical(30), 0, 90); ok {
+		t.Error("PushZoom reported a filter for push=0")
+	}
+}
+
+// A non-zero push adds one qtblend whose rect animates to a LARGER rectangle —
+// magnifying the picture. Shrinking it would push out, not in.
+//
+// The shape is what a unit test can check, and checking it matters: MLT ignores
+// a keyframe string on a parameter it cannot animate rather than rejecting it,
+// so a render proves nothing on its own. Neither `crop` nor `affine` marks any
+// parameter animatable in MLT's metadata; qtblend marks `rect`. An earlier
+// attempt animated `crop`, passed its unit tests, rendered successfully — and
+// emitted the uncropped frame letterboxed, because the ignored crop applied
+// nothing at all.
+func TestPushAddsAnAnimatedZoomThatMagnifies(t *testing.T) {
+	tl := buildShortTimeline("/m.mp4", 0, 3, 0.5, 0.4, 1920, 1080, "/c.srt", 0.12)
+	fs := tl.Producers[0].Filters
+	if len(fs) != 3 {
+		t.Fatalf("push emitted %d filters, want 3 (crop + zoom + subtitles)", len(fs))
+	}
+	var rect string
+	for _, p := range fs[1].Properties {
+		if p.Name == "mlt_service" && p.Value != "qtblend" {
+			t.Fatalf("zoom filter is %q, want qtblend (the only one of crop/affine/qtblend that animates)", p.Value)
+		}
+		if p.Name == "rect" {
+			rect = p.Value
+		}
+	}
+	var x0, y0, w0, h0, a0, x1, y1, w1, h1, a1 float64
+	var lastFrame int
+	if _, err := fmt.Sscanf(rect, "0=%g %g %g %g %g; %d=%g %g %g %g %g",
+		&x0, &y0, &w0, &h0, &a0, &lastFrame, &x1, &y1, &w1, &h1, &a1); err != nil {
+		t.Fatalf("rect %q is not a parseable keyframe pair: %v", rect, err)
+	}
+	if w1 <= w0 || h1 <= h0 {
+		t.Errorf("rect goes %gx%g -> %gx%g; a push must magnify", w0, h0, w1, h1)
+	}
+	// Centred: the enlarged picture is offset by half its growth in each axis,
+	// so the subject stays where the crop framed it instead of drifting.
+	if got, want := x1, -(w1-w0)/2; got != want {
+		t.Errorf("x offset %g, want %g (not centred — the subject drifts)", got, want)
+	}
+	if got, want := y1, -(h1-h0)/2; got != want {
+		t.Errorf("y offset %g, want %g (not centred)", got, want)
+	}
+}
+
+// Out-of-range pushes are clamped rather than allowed to crop to nothing.
+func TestPushIsClamped(t *testing.T) {
+	prof := timeline.Vertical(30)
+	// Past half again the subject fills the frame entirely.
+	huge, ok := timeline.PushZoom(prof, 5.0, 90)
+	if !ok {
+		t.Fatal("a large push produced no filter")
+	}
+	var w1 float64
+	for _, p := range huge.Properties {
+		if p.Name == "rect" {
+			var x0, y0, w0, h0, a0, x, y, h, a float64
+			var lf int
+			if _, err := fmt.Sscanf(p.Value, "0=%g %g %g %g %g; %d=%g %g %g %g %g",
+				&x0, &y0, &w0, &h0, &a0, &lf, &x, &y, &w1, &h, &a); err != nil {
+				t.Fatalf("rect %q: %v", p.Value, err)
+			}
+		}
+	}
+	if w1 > float64(prof.Width)*1.5 {
+		t.Errorf("a push of 5.0 magnified to %g px wide; it must clamp to +50%%", w1)
+	}
+	// A negative push is a locked frame, not an inverted one.
+	if _, ok := timeline.PushZoom(prof, -1, 90); ok {
+		t.Error("a negative push produced a zoom filter, want none")
 	}
 }

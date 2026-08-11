@@ -11,7 +11,7 @@ result: {"ok": bool, "problems": [...], "frames", "seconds"}
 
 op: "filters"
 params: {"query": "<substring>", "name": "<exact filter>", "limit": N}
-result: {"filters":[{"name","description","params":[{"name","type","description"}]}], "count", "total"}
+result: {"filters":[{"name","description","params":[{"name","type","description","animated"}]}], "count", "total"}
 
 The filters op exists so an agent can discover MLT's real capability surface at
 runtime — several hundred filters, including the whole avfilter set — instead of
@@ -65,10 +65,22 @@ def describe_filter(melt: str, name: str) -> dict:
         if line.startswith("description:") and not info["description"] and current is None:
             info["description"] = line.split(":", 1)[1].strip().strip('"')
         elif line.startswith("- identifier:"):
-            current = {"name": line.split(":", 1)[1].strip(), "type": "", "description": ""}
+            current = {
+                "name": line.split(":", 1)[1].strip(),
+                "type": "",
+                "description": "",
+                # Whether MLT will accept a keyframe string ("0=a; 90=b") for
+                # this parameter. Reported because a malformed animation is
+                # ignored rather than rejected: an agent that guesses wrong gets
+                # a render that succeeds and looks static, with nothing to say
+                # why. MLT marks it per-parameter as `animation: yes`.
+                "animated": False,
+            }
             info["params"].append(current)
         elif current is not None and line.startswith("type:"):
             current["type"] = line.split(":", 1)[1].strip()
+        elif current is not None and line.startswith("animation:"):
+            current["animated"] = line.split(":", 1)[1].strip().lower() in ("yes", "true", "1")
         elif current is not None and line.startswith("description:") and not current["description"]:
             current["description"] = line.split(":", 1)[1].strip().strip('"')
     return info

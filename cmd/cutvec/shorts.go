@@ -34,6 +34,11 @@ const (
 	// few enough to stay in sync with speech.
 	captionWords = 3
 
+	// shortFps is the delivery frame rate a vertical short is built at. Keyframe
+	// positions are frame indices, so this is what converts a clip's seconds
+	// into the frame a push ends on.
+	shortFps = 30
+
 	// hookSeconds is how long the opening hook card holds. Caption cues are
 	// clamped to start no earlier than this so the hook stands alone in the
 	// opening window instead of rendering stacked over the first captions.
@@ -73,8 +78,11 @@ type shortsRequest struct {
 	Quality   string  `json:"quality"`
 	// RenderConcurrency caps how many shorts render at once. Defaults to a
 	// quarter of the cores, since melt is itself threaded.
-	RenderConcurrency int    `json:"renderConcurrency"`
-	Hook              string `json:"hook"`
+	RenderConcurrency int `json:"renderConcurrency"`
+	// Push slowly tightens the framing across each short — 0.06 zooms in 6% by
+	// the end. Zero (the default) leaves the frame locked, exactly as before.
+	Push float64 `json:"push"`
+	Hook string  `json:"hook"`
 
 	LeftCentre  float64 `json:"leftCentre"`
 	RightCentre float64 `json:"rightCentre"`
@@ -256,7 +264,7 @@ func shortsCmd(args []string, stdin io.Reader, stdout io.Writer) error {
 			cx = req.LeftCentre
 		}
 		cy := seatCY(speakers, who, faceY)
-		tl := buildShortTimeline(media, start, end, cx, cy, srcW, srcH, srt)
+		tl := buildShortTimeline(media, start, end, cx, cy, srcW, srcH, srt, req.Push)
 		if problems := tl.Validate(); len(problems) > 0 {
 			return axerror.New("timeline.invalid",
 				"composed timeline is not renderable: "+strings.Join(problems, "; ")).
@@ -296,21 +304,30 @@ func shortsCmd(args []string, stdin io.Reader, stdout io.Writer) error {
 // (headShouldersWindow), not a center=1 slide, so it frames the head and
 // shoulders that make a short watchable rather than the full body.
 func buildShortTimeline(resource string, start, end, cx, cy float64,
-	srcW, srcH int, srt string) *timeline.Timeline {
+	srcW, srcH int, srt string, push float64) *timeline.Timeline {
 
 	x, y, w, h := headShouldersWindow(srcW, srcH, cx, cy)
 
 	tl := timeline.New()
-	tl.Profile = timeline.Vertical(30)
+	tl.Profile = timeline.Vertical(shortFps)
+	// Keyframes are in frames, so the clip's length has to be converted at the
+	// delivery frame rate. A zero push makes this a no-op and the emitted crop
+	// is byte-identical to a static one.
+	lastFrame := int((end - start) * float64(shortFps))
+	filters := []timeline.Filter{timeline.CropWindow(srcW, srcH, x, y, w, h)}
+	// The push magnifies the already-framed picture, so it goes after the crop.
+	// Omitted entirely when off, which keeps a locked shot byte-identical.
+	if zoom, ok := timeline.PushZoom(tl.Profile, push, lastFrame); ok {
+		filters = append(filters, zoom)
+	}
+	// Captions last: they are burned onto the final framing, not zoomed with it.
+	filters = append(filters, timeline.Subtitles(srt, "0 0 100% 90%", "Arial", "64", "#ffffffff"))
 	tl.Producers = []timeline.Producer{{
 		ID:       "short",
 		Resource: resource,
 		In:       timeline.Clock(start),
 		Out:      timeline.Clock(end),
-		Filters: []timeline.Filter{
-			timeline.CropWindow(srcW, srcH, x, y, w, h),
-			timeline.Subtitles(srt, "0 0 100% 90%", "Arial", "64", "#ffffffff"),
-		},
+		Filters:  filters,
 	}}
 	return tl
 }
