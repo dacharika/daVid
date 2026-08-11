@@ -272,6 +272,22 @@ func timelineBuildCmd(args []string, stdin io.Reader, stdout io.Writer) error {
 		return err
 	}
 
+	// Validate the composed timeline before anything is written. Every other
+	// timeline-producing path already does this (reframe.go, shorts.go,
+	// timeline_edit.go); build did not, so a request like two clips sharing one
+	// explicit id returned success and persisted an MLT melt cannot render — the
+	// failure surfaced much later as an opaque melt error, at render time, with
+	// nothing pointing back at the build that caused it.
+	//
+	// Checked ahead of the --plan branch on purpose: a dry run whose whole job is
+	// to report what would happen should not answer "I would write this" when the
+	// write produces something broken.
+	if problems := tl.Validate(); len(problems) > 0 {
+		return axerror.New("timeline.invalid",
+			fmt.Sprintf("timeline is not renderable: %v", problems)).
+			WithHint("fix the clips in the request — e.g. give each clip a unique id")
+	}
+
 	proj := project.Open(req.Project)
 	result := timelineResult{Timeline: proj.TimelinePath(), Producers: len(tl.Producers)}
 	if plan {

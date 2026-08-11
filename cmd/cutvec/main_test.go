@@ -463,6 +463,43 @@ func TestTimelinePlanWritesNothing(t *testing.T) {
 	}
 }
 
+// A build that composes an unrenderable timeline must fail at build time, not
+// persist a broken MLT and return success. Two clips sharing one explicit id is
+// the cheapest way to produce one: it used to write the file and report
+// producers:2, and the fault only surfaced later as an opaque melt error at
+// render, with nothing pointing back at the build that caused it.
+func TestTimelineBuildRejectsAnUnrenderableTimeline(t *testing.T) {
+	dir := t.TempDir()
+	reqBytes, _ := json.Marshal(map[string]any{
+		"project": dir,
+		"clips": []map[string]any{
+			{"id": "cam1", "resource": "a.mp4"},
+			{"id": "cam1", "resource": "b.mp4"}, // same id: melt cannot resolve it
+		},
+	})
+
+	var out bytes.Buffer
+	err := run([]string{"timeline"}, bytes.NewReader(reqBytes), &out)
+	if err == nil {
+		t.Fatalf("duplicate producer id was accepted; result = %s", out.String())
+	}
+	var ae *axerror.Error
+	if !errors.As(err, &ae) || ae.Code != "timeline.invalid" {
+		t.Fatalf("error = %v, want code timeline.invalid", err)
+	}
+	// Nothing may reach disk: a persisted broken timeline is what a later render
+	// would pick up and fail on.
+	if _, statErr := os.Stat(filepath.Join(dir, "timeline.mlt")); !os.IsNotExist(statErr) {
+		t.Fatalf("a rejected build still wrote timeline.mlt (stat err = %v)", statErr)
+	}
+
+	// --plan must report the same fault rather than claiming it would write it.
+	out.Reset()
+	if err := run([]string{"timeline", "--plan"}, bytes.NewReader(reqBytes), &out); err == nil {
+		t.Fatalf("--plan reported success for an unrenderable timeline: %s", out.String())
+	}
+}
+
 // runJSON drives run() with a JSON request on stdin and unmarshals the JSON
 // result into out. It is the shared harness for the state-model tools, exercising
 // the real CLI entry point end to end.

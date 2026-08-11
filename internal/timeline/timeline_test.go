@@ -54,6 +54,34 @@ func TestVerticalAndLandscapeCarryTheRightAspect(t *testing.T) {
 	}
 }
 
+// Clock must never emit a field outside its range. The seconds field is printed
+// with %06.3f, which rounds; if h and m are computed by truncating the
+// unrounded value, a time just under a minute boundary rounds the remainder up
+// to 60 with nothing to carry into — "00:00:60.000", which is not a clock and
+// which melt cannot parse. Every case below within half a millisecond of a
+// boundary is one melt would have rejected.
+func TestClockCarriesRoundingIntoTheNextMinute(t *testing.T) {
+	for _, tc := range []struct {
+		seconds float64
+		want    string
+	}{
+		{59.9996, "00:01:00.000"},    // rounds up into the next minute
+		{119.9999, "00:02:00.000"},   // and again, two minutes in
+		{3599.9999, "01:00:00.000"},  // carries all the way through the hour
+		{0, "00:00:00.000"},          // the existing cases must still hold
+		{12.5, "00:00:12.500"},       //
+		{3671.25, "01:01:11.250"},    //
+		{59.9994, "00:00:59.999"},    // just below the threshold: no carry
+		{0.0004, "00:00:00.000"},     // rounds down to zero, not 0.001
+		{0.0006, "00:00:00.001"},     // and up to a single millisecond
+		{86399.9999, "24:00:00.000"}, // past a day, hours simply keep counting
+	} {
+		if got := Clock(tc.seconds); got != tc.want {
+			t.Errorf("Clock(%v) = %q, want %q", tc.seconds, got, tc.want)
+		}
+	}
+}
+
 func TestClockRejectsNegativeTime(t *testing.T) {
 	// A negative in-point is a clamped bug elsewhere; emitting one would make
 	// melt fail on a document that looks fine.
