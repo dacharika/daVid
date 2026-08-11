@@ -345,7 +345,12 @@ func Default() Catalog {
 					"type":     "object",
 					"required": []any{"project"},
 					"properties": map[string]any{
-						"project":    map[string]any{"type": "string", "description": "the project directory the asset index lives in"},
+						"project": map[string]any{"type": "string", "description": "the project directory the asset index lives in"},
+						"op": map[string]any{
+							"type":        "string",
+							"description": "which subcommand to run: 'index' to embed a library directory, 'search' to retrieve ranked refs. Required over MCP, where it selects the subcommand the CLI takes positionally",
+							"enum":        []any{"index", "search"},
+						},
 						"dir":        map[string]any{"type": "string", "description": "index only: the library directory to walk (also accepted as the positional argument)"},
 						"query":      map[string]any{"type": "string", "description": "search only: what the sound or clip should be (also accepted as the positional argument)"},
 						"limit":      map[string]any{"type": "integer", "description": "search only: cap on ranked results; defaults to 10"},

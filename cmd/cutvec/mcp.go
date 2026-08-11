@@ -237,6 +237,19 @@ func callTool(name string, arguments json.RawMessage) mcpCallResult {
 		}
 	}
 
+	// `assets` has no default subcommand — assetsCmd rejects an empty argument
+	// list outright — so without this the tool is advertised in tools/list and
+	// then fails every tools/call with input.empty before reaching a worker,
+	// making the whole library-retrieval surface unreachable over MCP. Same
+	// "op" routing as timeline above.
+	if name == "assets" {
+		var m map[string]any
+		_ = json.Unmarshal(body, &m)
+		if v, ok := m["op"].(string); ok && (v == "index" || v == "search") {
+			args = append(args, v)
+		}
+	}
+
 	// stdout is captured so the tool's single JSON result comes back as MCP
 	// content; progress rides the server's real stderr (its log channel), never
 	// the JSON-RPC stream on stdout.

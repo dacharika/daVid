@@ -7,6 +7,7 @@ package timeline
 import (
 	"encoding/xml"
 	"fmt"
+	"math"
 	"strconv"
 )
 
@@ -291,14 +292,29 @@ func Vertical(fps int) *Profile {
 }
 
 // Clock formats seconds as the "HH:MM:SS.mmm" MLT uses for in/out points.
+//
+// Rounding happens once, up front, in whole milliseconds — before the value is
+// split into hours and minutes. Splitting first and rounding second is what
+// produced an out-of-range seconds field: h and m came from int() truncation on
+// the unrounded value while %06.3f rounded the remainder independently, so
+// 59.9996 printed as "00:00:60.000". There is no :60 on a clock, and melt
+// cannot parse one, so a time landing within half a millisecond of a minute
+// boundary broke the render. Carrying the rounding through the division makes
+// that impossible to express.
 func Clock(seconds float64) string {
 	if seconds < 0 {
 		seconds = 0
 	}
-	h := int(seconds) / 3600
-	m := (int(seconds) % 3600) / 60
-	s := seconds - float64(h*3600+m*60)
-	return fmt.Sprintf("%02d:%02d:%06.3f", h, m, s)
+	const (
+		msPerSecond = 1000
+		msPerMinute = 60 * msPerSecond
+		msPerHour   = 60 * msPerMinute
+	)
+	ms := int64(math.Round(seconds * msPerSecond))
+	return fmt.Sprintf("%02d:%02d:%06.3f",
+		ms/msPerHour,
+		(ms%msPerHour)/msPerMinute,
+		float64(ms%msPerMinute)/msPerSecond)
 }
 
 // NewFilter builds a filter for the given mlt_service with ordered properties
