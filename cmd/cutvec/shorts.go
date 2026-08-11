@@ -6,8 +6,10 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
+	"sync"
 
 	"github.com/tahabsn/cutvec/internal/axerror"
 	"github.com/tahabsn/cutvec/internal/project"
@@ -69,7 +71,10 @@ type shortsRequest struct {
 	// a run-on passage cannot drag a short into an unwatchable length.
 	MaxExtend float64 `json:"maxExtend"`
 	Quality   string  `json:"quality"`
-	Hook      string  `json:"hook"`
+	// RenderConcurrency caps how many shorts render at once. Defaults to a
+	// quarter of the cores, since melt is itself threaded.
+	RenderConcurrency int    `json:"renderConcurrency"`
+	Hook              string `json:"hook"`
 
 	LeftCentre  float64 `json:"leftCentre"`
 	RightCentre float64 `json:"rightCentre"`
@@ -271,31 +276,16 @@ func shortsCmd(args []string, stdin io.Reader, stdout io.Writer) error {
 			Score: c.Score, Text: c.Text, Timeline: tlPath, Captions: srt,
 		}
 
-		// 3. Render, unless this is a dry run: --plan leaves every timeline and
-		// caption file on disk so an agent can inspect the edit before paying
-		// for the renders.
-		if !plan {
-			rw, err := resolveMeltWorker(renderRequest{
-				Worker: req.RenderWorker, WorkerArgs: req.RenderWorkerArgs,
-			})
-			if err != nil {
-				return err
-			}
-			output := base + ".mp4"
-			if _, err := rw.Invoke(context.Background(), worker.Request{
-				Op:     "render",
-				Params: map[string]any{"timeline": tlPath, "output": output, "quality": req.Quality},
-			}); err != nil {
-				return err
-			}
-			if _, err := os.Stat(output); err != nil {
-				return axerror.New("worker.protocol", "render worker did not write the short").
-					WithHint("the melt worker must write the rendered video to the requested output path").
-					AsRetryable()
-			}
-			short.Output = output
-		}
 		out.Shorts = append(out.Shorts, short)
+	}
+
+	// 3. Render, unless this is a dry run: --plan leaves every timeline and
+	// caption file on disk so an agent can inspect the edit before paying for
+	// the renders.
+	if !plan {
+		if err := renderShorts(&out, req); err != nil {
+			return err
+		}
 	}
 	return emitJSON(stdout, out)
 }
@@ -642,4 +632,80 @@ func min64(a, b float64) float64 {
 		return a
 	}
 	return b
+}
+
+// renderShorts renders every composed short, several at a time.
+//
+// Each short is an independent melt process over its own timeline, so rendering
+// them one after another left most of the machine idle: three shorts measured
+// 24.5s at 205% CPU on an 18-core box. Only the renders run concurrently —
+// composition stays serial because it is cheap, writes files, and fixes the
+// order the results are reported in.
+//
+// Determinism is the constraint, not just speed. Results are written back by
+// index rather than appended as they finish, so the output is identical
+// whatever order the renders complete in; and when several fail, the error
+// returned is the lowest-indexed one, so a failing run reports the same error
+// every time rather than whichever goroutine lost the race.
+func renderShorts(out *shortsResult, req shortsRequest) error {
+	rw, err := resolveMeltWorker(renderRequest{
+		Worker: req.RenderWorker, WorkerArgs: req.RenderWorkerArgs,
+	})
+	if err != nil {
+		return err
+	}
+
+	limit := req.RenderConcurrency
+	if limit <= 0 {
+		// melt is itself threaded — one render measured about two cores — so
+		// this deliberately leaves headroom rather than running one per core.
+		limit = runtime.NumCPU() / 4
+	}
+	if limit < 1 {
+		limit = 1
+	}
+	if limit > len(out.Shorts) {
+		limit = len(out.Shorts)
+	}
+
+	errs := make([]error, len(out.Shorts))
+	outputs := make([]string, len(out.Shorts))
+	sem := make(chan struct{}, limit)
+	var wg sync.WaitGroup
+
+	for i := range out.Shorts {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			sem <- struct{}{}
+			defer func() { <-sem }()
+
+			short := out.Shorts[i]
+			output := strings.TrimSuffix(short.Timeline, ".mlt") + ".mp4"
+			if _, err := rw.Invoke(context.Background(), worker.Request{
+				Op:     "render",
+				Params: map[string]any{"timeline": short.Timeline, "output": output, "quality": req.Quality},
+			}); err != nil {
+				errs[i] = err
+				return
+			}
+			if _, err := os.Stat(output); err != nil {
+				errs[i] = axerror.New("worker.protocol", "render worker did not write the short").
+					WithHint("the melt worker must write the rendered video to the requested output path").
+					AsRetryable()
+				return
+			}
+			outputs[i] = output
+		}(i)
+	}
+	wg.Wait()
+
+	// Lowest index wins, so the reported failure does not depend on scheduling.
+	for i, err := range errs {
+		if err != nil {
+			return err
+		}
+		out.Shorts[i].Output = outputs[i]
+	}
+	return nil
 }
