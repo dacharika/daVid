@@ -460,14 +460,11 @@ func (fp ffmpegProber) Probe(path string) (project.Probe, error) {
 // source is ingested without a probe rather than failing — dimensions are a best
 // effort, not a precondition for recording the source.
 func resolveProber(req ingestRequest) project.Prober {
-	path := req.Worker
-	if path == "" {
-		path = os.Getenv("CUTVEC_FFMPEG_WORKER")
-	}
-	if path == "" {
+	w, ok := ffmpegWorkerFor(req)
+	if !ok {
 		return nil
 	}
-	return ffmpegProber{w: worker.Worker{Path: path, Args: req.WorkerArgs}}
+	return ffmpegProber{w: w}
 }
 
 // ffmpegDeriver builds a source's derived media through the same ffmpeg worker
@@ -508,31 +505,32 @@ func (fd ffmpegDeriver) Audio(src, dest string) error {
 // same worker, so configuring one configures both; a nil deriver means the
 // source is ingested without derived media rather than failing.
 func resolveDeriver(req ingestRequest) project.Deriver {
+	w, ok := ffmpegWorkerFor(req)
+	if !ok {
+		return nil
+	}
+	return ffmpegDeriver{w: w}
+}
+
+// ffmpegWorkerFor locates the one ffmpeg worker both the prober and the deriver
+// use, so configuring it once configures both. Unlike the steps that refuse
+// without a worker, ingest treats its absence as "skip the optional extras": a
+// source must stay recordable on a machine with no ffmpeg.
+func ffmpegWorkerFor(req ingestRequest) (worker.Worker, bool) {
 	path := req.Worker
 	if path == "" {
 		path = os.Getenv("CUTVEC_FFMPEG_WORKER")
 	}
 	if path == "" {
-		return nil
+		return worker.Worker{}, false
 	}
-	return ffmpegDeriver{w: worker.Worker{Path: path, Args: req.WorkerArgs}}
+	return worker.Worker{Path: path, Args: req.WorkerArgs}, true
 }
 
 // probeFromResult lifts the ffmpeg worker's result map into a project.Probe. A
 // result that is not shaped like a probe is a protocol violation.
 func probeFromResult(result map[string]any) (project.Probe, error) {
-	b, err := json.Marshal(result)
-	if err != nil {
-		return project.Probe{}, axerror.New("worker.protocol",
-			"cannot re-encode worker result: "+err.Error())
-	}
-	var pr project.Probe
-	if err := json.Unmarshal(b, &pr); err != nil {
-		return project.Probe{}, axerror.New("worker.protocol",
-			"worker result is not a probe: "+err.Error()).
-			WithHint(`the ffmpeg worker must return {"width","height","duration","fps"}`)
-	}
-	return pr, nil
+	return resultAs[project.Probe](result, "a probe", `the ffmpeg worker must return {"width","height","duration","fps"}`)
 }
 
 // statusRequest is the optional JSON document for the `status` tool: the project
@@ -751,32 +749,13 @@ func resolveSource(m project.Manifest, want, verb string) (project.Source, error
 // CUTVEC_WHISPER_WORKER env var for the executable path. With neither set there
 // is no worker to run, which is a non-retryable worker.missing.
 func resolveWorker(req transcribeRequest) (worker.Worker, error) {
-	path := req.Worker
-	if path == "" {
-		path = os.Getenv("CUTVEC_WHISPER_WORKER")
-	}
-	if path == "" {
-		return worker.Worker{}, axerror.New("worker.missing", "no whisper worker configured").
-			WithHint(`set "worker" in the request or the CUTVEC_WHISPER_WORKER env var to the whisper worker executable`)
-	}
-	return worker.Worker{Path: path, Args: req.WorkerArgs}, nil
+	return resolveNamedWorker(req.Worker, req.WorkerArgs, whisperWorkerSpec)
 }
 
 // transcriptFromResult lifts the worker's result map into a Transcript. A result
 // that is not shaped like a transcript is a protocol violation.
 func transcriptFromResult(result map[string]any) (project.Transcript, error) {
-	b, err := json.Marshal(result)
-	if err != nil {
-		return project.Transcript{}, axerror.New("worker.protocol",
-			"cannot re-encode worker result: "+err.Error())
-	}
-	var t project.Transcript
-	if err := json.Unmarshal(b, &t); err != nil {
-		return project.Transcript{}, axerror.New("worker.protocol",
-			"worker result is not a transcript: "+err.Error()).
-			WithHint(`the transcribe worker must return {"words":[{"word","start","end"}],...}`)
-	}
-	return t, nil
+	return resultAs[project.Transcript](result, "a transcript", `the transcribe worker must return {"words":[{"word","start","end"}],...}`)
 }
 
 // indexRequest is the JSON document for the `index` tool. Project is required
@@ -929,33 +908,14 @@ func indexCmd(args []string, stdin io.Reader, stdout io.Writer) error {
 // back to the CUTVEC_INDEX_WORKER env var for the executable path. With neither
 // set there is no worker to run, which is a non-retryable worker.missing.
 func resolveIndexWorker(req indexRequest) (worker.Worker, error) {
-	path := req.Worker
-	if path == "" {
-		path = os.Getenv("CUTVEC_INDEX_WORKER")
-	}
-	if path == "" {
-		return worker.Worker{}, axerror.New("worker.missing", "no index (embedding) worker configured").
-			WithHint(`set "worker" in the request or the CUTVEC_INDEX_WORKER env var to the local embedding worker executable`)
-	}
-	return worker.Worker{Path: path, Args: req.WorkerArgs}, nil
+	return resolveNamedWorker(req.Worker, req.WorkerArgs, indexWorkerSpec)
 }
 
 // indexFromResult lifts the worker's result map into an Index. A result that is
 // not shaped like an index is a protocol violation. Source and Table are set by
 // the core after the worker returns, so the worker need only report the summary.
 func indexFromResult(result map[string]any) (project.Index, error) {
-	b, err := json.Marshal(result)
-	if err != nil {
-		return project.Index{}, axerror.New("worker.protocol",
-			"cannot re-encode worker result: "+err.Error())
-	}
-	var idx project.Index
-	if err := json.Unmarshal(b, &idx); err != nil {
-		return project.Index{}, axerror.New("worker.protocol",
-			"worker result is not an index: "+err.Error()).
-			WithHint(`the index worker must return {"segments":N,"dim":D,...}`)
-	}
-	return idx, nil
+	return resultAs[project.Index](result, "an index", `the index worker must return {"segments":N,"dim":D,...}`)
 }
 
 // searchRequest is the JSON document for the `search` tool. Project and Query are
@@ -1120,15 +1080,7 @@ func parseSearchArgs(args []string) (proj, query string, plan bool, err error) {
 // back to the CUTVEC_SEARCH_WORKER env var for the executable path. With neither
 // set there is no worker to run, which is a non-retryable worker.missing.
 func resolveSearchWorker(req searchRequest) (worker.Worker, error) {
-	path := req.Worker
-	if path == "" {
-		path = os.Getenv("CUTVEC_SEARCH_WORKER")
-	}
-	if path == "" {
-		return worker.Worker{}, axerror.New("worker.missing", "no search worker configured").
-			WithHint(`set "worker" in the request or the CUTVEC_SEARCH_WORKER env var to the local search worker executable`)
-	}
-	return worker.Worker{Path: path, Args: req.WorkerArgs}, nil
+	return resolveNamedWorker(req.Worker, req.WorkerArgs, searchWorkerSpec)
 }
 
 // searchFromResult lifts the worker's result map into ranked candidates plus the
@@ -1334,32 +1286,13 @@ func parseSpeakersArgs(args []string) (proj string, plan bool, err error) {
 // back to the CUTVEC_MEDIAPIPE_WORKER env var for the executable path. With
 // neither set there is no worker to run, which is a non-retryable worker.missing.
 func resolveMediapipeWorker(req speakersRequest) (worker.Worker, error) {
-	path := req.Worker
-	if path == "" {
-		path = os.Getenv("CUTVEC_MEDIAPIPE_WORKER")
-	}
-	if path == "" {
-		return worker.Worker{}, axerror.New("worker.missing", "no mediapipe worker configured").
-			WithHint(`set "worker" in the request or the CUTVEC_MEDIAPIPE_WORKER env var to the mediapipe worker executable`)
-	}
-	return worker.Worker{Path: path, Args: req.WorkerArgs}, nil
+	return resolveNamedWorker(req.Worker, req.WorkerArgs, mediapipeWorkerSpec)
 }
 
 // speakersFromResult lifts the worker's result map into a Speakers track. A result
 // that is not shaped like a speaker track is a protocol violation.
 func speakersFromResult(result map[string]any) (project.Speakers, error) {
-	b, err := json.Marshal(result)
-	if err != nil {
-		return project.Speakers{}, axerror.New("worker.protocol",
-			"cannot re-encode worker result: "+err.Error())
-	}
-	var s project.Speakers
-	if err := json.Unmarshal(b, &s); err != nil {
-		return project.Speakers{}, axerror.New("worker.protocol",
-			"worker result is not a speaker track: "+err.Error()).
-			WithHint(`the speakers worker must return {"turns":[{"speaker","start","end"}],...}`)
-	}
-	return s, nil
+	return resultAs[project.Speakers](result, "a speaker track", `the speakers worker must return {"turns":[{"speaker","start","end"}],...}`)
 }
 
 // Render quality tiers: a fast draft ("proxy") and a full-quality final render
@@ -1566,15 +1499,7 @@ func resolveQuality(q string) (string, error) {
 // CUTVEC_MELT_WORKER env var for the executable path. With neither set there is
 // no worker to run, which is a non-retryable worker.missing.
 func resolveMeltWorker(req renderRequest) (worker.Worker, error) {
-	path := req.Worker
-	if path == "" {
-		path = os.Getenv("CUTVEC_MELT_WORKER")
-	}
-	if path == "" {
-		return worker.Worker{}, axerror.New("worker.missing", "no melt worker configured").
-			WithHint(`set "worker" in the request or the CUTVEC_MELT_WORKER env var to the melt render worker executable`)
-	}
-	return worker.Worker{Path: path, Args: req.WorkerArgs}, nil
+	return resolveNamedWorker(req.Worker, req.WorkerArgs, meltWorkerSpec)
 }
 
 // doctorCmd preflights the whole runtime environment in one call: it probes
@@ -1770,4 +1695,69 @@ func emitError(err error) {
 	}
 	b, _ := json.Marshal(ae)
 	fmt.Fprintln(os.Stderr, string(b))
+}
+
+// --- shared worker plumbing --------------------------------------------------
+//
+// Five steps each reach a different Python worker, and each used to carry its
+// own ten-line copy of "take the request's path, else the env var, else refuse".
+// The copies differed only in which env var they read and how they phrased the
+// refusal, so the shape below keeps the wording per-step and the logic in one
+// place — a fix to the resolution rule now lands once instead of five times.
+
+// workerSpec is how one step names the executable it needs and explains its
+// absence. `what` completes "no %s worker configured"; `target` completes
+// "…env var to the %s".
+type workerSpec struct {
+	env    string
+	what   string
+	target string
+}
+
+var (
+	whisperWorkerSpec   = workerSpec{"CUTVEC_WHISPER_WORKER", "whisper", "whisper worker executable"}
+	indexWorkerSpec     = workerSpec{"CUTVEC_INDEX_WORKER", "index (embedding)", "local embedding worker executable"}
+	searchWorkerSpec    = workerSpec{"CUTVEC_SEARCH_WORKER", "search", "local search worker executable"}
+	mediapipeWorkerSpec = workerSpec{"CUTVEC_MEDIAPIPE_WORKER", "mediapipe", "mediapipe worker executable"}
+	meltWorkerSpec      = workerSpec{"CUTVEC_MELT_WORKER", "melt", "melt render worker executable"}
+)
+
+// resolveNamedWorker prefers the request's explicit worker path, falls back to
+// the step's env var, and refuses with a branchable worker.missing when neither
+// names one — a missing worker is a configuration answer, not a crash.
+func resolveNamedWorker(reqPath string, reqArgs []string, spec workerSpec) (worker.Worker, error) {
+	path := reqPath
+	if path == "" {
+		path = os.Getenv(spec.env)
+	}
+	if path == "" {
+		return worker.Worker{}, axerror.New("worker.missing",
+			fmt.Sprintf("no %s worker configured", spec.what)).
+			WithHint(fmt.Sprintf(`set "worker" in the request or the %s env var to the %s`,
+				spec.env, spec.target))
+	}
+	return worker.Worker{Path: path, Args: reqArgs}, nil
+}
+
+// resultAs lifts a worker's untyped result map into the typed value the core
+// works with, by round-tripping it through JSON. Five steps each had their own
+// identical copy of this; only the type and the shape hint ever differed.
+//
+// A result that will not decode is a protocol violation rather than a bad input:
+// the worker answered, but not with the shape the contract promises, so the hint
+// names that shape instead of asking the caller to change anything.
+func resultAs[T any](result map[string]any, what, shapeHint string) (T, error) {
+	var zero T
+	b, err := json.Marshal(result)
+	if err != nil {
+		return zero, axerror.New("worker.protocol",
+			"cannot re-encode worker result: "+err.Error())
+	}
+	var v T
+	if err := json.Unmarshal(b, &v); err != nil {
+		return zero, axerror.New("worker.protocol",
+			fmt.Sprintf("worker result is not %s: %s", what, err.Error())).
+			WithHint(shapeHint)
+	}
+	return v, nil
 }
