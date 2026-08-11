@@ -156,6 +156,148 @@ returns `project.uninitialized`; a project with no built timeline returns
 `timeline.missing`; no configured worker returns `worker.missing`; and a worker
 that crashes or does not write the output maps to `worker.crashed`/`worker.protocol`.
 
+## Speakers: who is talking, when
+
+`speakers` runs the mediapipe worker over an ingested source and returns a track
+of **active-speaker turns** against a fixed two-person layout — the input the
+reframe and shorts recipes cut on. Like the other analysis steps it is keyed on
+the source's content hash, so a re-run is a cache hit that invokes no worker:
+
+```sh
+./build/cutvec speakers proj --json < /dev/null
+# → {"speakers":"proj/cache/speakers-<hash>.json","source":"<hash>","turns":184,
+#    "layout":"two-person","cached":false}
+```
+
+The returned `speakers` is a handle to the cached turns, not the turn list. Point
+the worker with `"worker"` or `CUTVEC_MEDIAPIPE_WORKER`; `"source"` selects which
+ingested source when the project holds more than one.
+
+## Reframe: one locked-off wide shot, cut like two cameras
+
+`reframe-edit` is a recipe, not a primitive: it takes a single static wide shot
+and produces an edit that looks multi-camera — punching in on whoever is
+speaking, falling back to the wide two-shot when nobody is — then renders it. It
+needs a source with a speaker track (run `speakers` first).
+
+```sh
+./build/cutvec reframe-edit proj --json < /dev/null
+# → {"output":"proj/cache/render-<hash>-final.mp4","timeline":"proj/reframe.mlt",
+#    "duration":1243.0,"shots":[{"start":0,"end":8.4,"shot":"wide"},
+#                               {"start":8.4,"end":21.7,"shot":"left"},…]}
+```
+
+`shots` is the **gapless** shot list the edit cuts through, so the plan is
+auditable before the pixels exist. `keep` sets how much frame width a single
+holds (smaller punches tighter), `minShot` sets the shortest shot so the edit
+does not ping-pong on brief interjections, and `leftCentre`/`rightCentre`
+(0.28/0.72 by default) say where the seats are. `--plan` writes the timeline and
+returns the shot list without rendering.
+
+## Shorts: query to vertical captioned clips
+
+`shorts` is the other recipe, and it chains the whole stack: it searches the
+index for moments matching a query, frames head-and-shoulders on whoever is
+speaking with a crop window computed from the real source dimensions and the
+detected seat, burns word-timed captions, and renders each clip vertical. It
+needs an indexed, transcribed source with a speaker track.
+
+```sh
+./build/cutvec shorts proj "the funniest moment" --json < /dev/null
+# → {"query":"the funniest moment","shorts":[
+#      {"rank":1,"score":0.88,"start":132.0,"end":137.5,
+#       "captions":"proj/cache/shorts/short-1.srt",
+#       "output":"proj/cache/shorts/short-1.mp4"},…]}
+```
+
+Moments are ranked into the same deterministic order `search` uses, so shorts and
+search agree on the top moments and two runs over one index cannot yield
+different clips. `count` sets how many to cut (3 by default), `padding` adds
+headroom either side of a matched moment, `hook` puts a caption card over the
+opening seconds, and `quality` picks `proxy` or `final`. Under `--plan` the
+timelines and captions are written but nothing renders.
+
+## Filters: discover what this machine's MLT can do
+
+Guessing an MLT service name is the fastest way to a failed render. `filters`
+searches the installed registry — several hundred entries, including the whole
+avfilter set — and expands a named filter's parameters, so an agent composes
+`timeline` effects from what is actually present:
+
+```sh
+echo '{"query":"denoise","limit":3}' | ./build/cutvec filters
+# → {"count":3,"filters":[
+#      {"name":"avfilter.atadenoise","description":"Apply an Adaptive Temporal Averaging Denoiser."},
+#      {"name":"avfilter.owdenoise","description":"Denoise using wavelets."},
+#      {"name":"avfilter.vaguedenoiser","description":"Apply a Wavelet based Denoiser."}],
+#    "presets":["denoise","denoise-strong","grade","loudness","warm"]}
+
+echo '{"name":"avfilter.curves"}' | ./build/cutvec filters
+# → {"count":1,"filters":[{"name":"avfilter.curves","description":"Adjust components curves.",
+#      "params":[{"name":"av.preset","type":"string","description":"select a color curves preset"},…]}]}
+```
+
+`presets` are cutvec's own named chains — `grade`, `denoise`, `denoise-strong`,
+`loudness`, `warm` — usable directly as a `timeline` effect without naming a
+service. Parameters are only expanded for a focused lookup, so a broad search
+stays small enough to read.
+
+## Assets: a searchable library of sounds and b-roll
+
+`assets` is the retrieval half of the vector-search surface, pointed at a media
+library rather than a transcript. `assets index` walks a directory and embeds
+each file; `assets search` returns ranked refs to place on a timeline:
+
+```sh
+echo '{"project":"proj"}' | ./build/cutvec assets index ~/sfx
+# → {"assets":128,"table":"proj/cache/assets.lance","dim":384,"model":"…"}
+
+echo '{"project":"proj"}' | ./build/cutvec assets search "deep impact hit"
+# → {"query":"deep impact hit","assets":[
+#      {"ref":"sfx/boom.wav","text":"boom","score":0.91},…],"model":"…"}
+```
+
+A file with no annotation is described by its own path; a sidecar `.txt` next to
+it overrides that, which is how a library owner fixes a filename that does not
+describe its contents. Hits come back in a deterministic total order — descending
+score, then `ref`/`text` as stable tiebreaks — and `limit` (10 by default) caps
+them.
+
+## Timeline: inspect and edit an existing edit
+
+Beyond building one, `timeline` reads a composed edit back and mutates it in
+place, so an agent can adjust a single filter without re-running search and
+detection to rebuild everything:
+
+```sh
+echo '{"project":"proj"}' | ./build/cutvec timeline inspect
+# → the structure: each producer and the filters attached to it
+
+echo '{"project":"proj","add":[{"preset":"grade","producer":"cam1"}]}' \
+  | ./build/cutvec timeline edit
+```
+
+`add` attaches effects (a named preset, or one MLT service with its properties);
+omitting `producer` applies to every clip. Both subcommands take `--plan`.
+
+## MCP: the same catalog over JSON-RPC
+
+`mcp serve` exposes every tool above to an MCP client over stdio. It is the same
+catalog the CLI dispatches from, so the two surfaces cannot drift:
+
+```sh
+printf '%s\n' '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18"}}' \
+  | ./build/cutvec mcp serve
+# → {"jsonrpc":"2.0","id":1,"result":{"capabilities":{"tools":{"listChanged":false}},
+#    "protocolVersion":"2025-06-18","serverInfo":{"name":"cutvec","version":"0"}}}
+```
+
+`tools/list` returns each tool with its input schema; `tools/call` runs one
+through the CLI's own dispatch. A tool failure is **not** a protocol failure — it
+comes back as `isError` content carrying the structured `{code, hint, retryable}`
+error, which is what lets an agent read the hint and retry. Progress rides the
+server's stderr, never the JSON-RPC stream on stdout.
+
 ## Progress: watch a long step advance
 
 The long steps — `transcribe`, `speakers`, and `render` — write newline-delimited
@@ -205,7 +347,7 @@ code before starting real work; when everything is present it exits `0` with
 ## Layout
 
 ```
-cmd/cutvec/         entry point — CLI today, `cutvec mcp` serves the same catalog
+cmd/cutvec/         entry point — the CLI, and `cutvec mcp serve` over JSON-RPC
 internal/catalog/   the one self-describing tool catalog (backs CLI + MCP)
 internal/axerror/   structured errors {code, hint, retryable}
 internal/project/   explicit project-dir state: content-hash cache, resumable steps
@@ -255,12 +397,21 @@ hits the content-hash cache instead of re-running the worker.
 
 ## Status
 
-The layout builds and tests green from a clean checkout. `cutvec describe`
-returns the catalog of seven tools — `describe`, `init`, `ingest`, `status`,
-`transcribe`, `timeline`, `render` — and each carries a request from the CLI
-entry point through `catalog` → its handler → `project` (storage) and back as a
-JSON handle. `transcribe` and `render` complete the full data-flow path above,
-crossing the `worker` boundary to a subprocess (stubbed in tests by a re-exec'd
-fake worker, so `go test ./...` needs no Python, whisper, or melt on `PATH`).
-Later slices flesh out the remaining edits (active-speaker reframe, vertical
-shorts, captions, grade, denoise, SFX) and the `cutvec mcp` server surface.
+Builds and tests green from a clean checkout. `cutvec describe` returns the
+catalog of **15 tools** — `describe`, `init`, `ingest`, `status`, `transcribe`,
+`index`, `search`, `speakers`, `shorts`, `assets`, `filters`, `reframe-edit`,
+`timeline`, `render`, `doctor` — and each carries a request from the CLI entry
+point through `catalog` → its handler → `project` (storage) and back as a JSON
+handle. Every capability the opening paragraph claims is implemented: active-
+speaker reframe, vertical shorts with hook and karaoke captions, the
+grade/denoise/loudness/warm presets, asset retrieval for SFX and b-roll, and the
+`mcp serve` surface.
+
+The steps that cross the `worker` boundary to a Python subprocess are stubbed in
+tests by a re-exec'd fake worker, so `go test ./...` needs no Python, whisper,
+lancedb, or melt on `PATH`. CI runs the Go suite on Linux and macOS with `-race`
+and a coverage floor, lints and compiles the workers, and checks every worker
+still answers the JSON contract with no ML dependencies installed.
+
+Running the real pipeline does need those dependencies. `cutvec doctor` is the
+one call that reports which are missing and how to install each.
