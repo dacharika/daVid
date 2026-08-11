@@ -54,6 +54,8 @@ func timelineCmd(args []string, stdin io.Reader, stdout io.Writer) error {
 			return timelineInspectCmd(args[1:], stdin, stdout)
 		case "edit":
 			return timelineEditCmd(args[1:], stdin, stdout)
+		case "verify":
+			return timelineVerifyCmd(args[1:], stdin, stdout)
 		}
 	}
 	return timelineBuildCmd(args, stdin, stdout)

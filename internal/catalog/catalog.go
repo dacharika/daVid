@@ -466,7 +466,7 @@ func Default() Catalog {
 			},
 			{
 				Name:    "timeline",
-				Summary: "Build, inspect, or edit an MLT XML timeline in the project directory. With no `op` it builds one from `clips`. `op:\"inspect\"` returns the structure (producers and their filters). `op:\"edit\"` mutates an existing timeline in place — add or remove a filter on a named producer — so an agent can adjust one filter on a composed edit without rebuilding it from search and detection.",
+				Summary: "Build, inspect, verify, or edit an MLT XML timeline in the project directory. With no `op` it builds one from `clips`. `op:\"inspect\"` returns the structure (producers and their filters). `op:\"edit\"` mutates an existing timeline in place — add or remove a filter on a named producer — so an agent can adjust one filter on a composed edit without rebuilding it from search and detection.",
 				InputSchema: Schema{
 					"type":     "object",
 					"required": []any{"project"},
@@ -477,8 +477,8 @@ func Default() Catalog {
 						},
 						"op": map[string]any{
 							"type":        "string",
-							"description": "omit to build from clips; 'inspect' to read the structure back; 'edit' to add/remove filters on an existing timeline",
-							"enum":        []any{"inspect", "edit"},
+							"description": "omit to build from clips; 'inspect' to read the structure back; 'edit' to add/remove filters on an existing timeline; 'verify' to preflight it through melt before paying for a render",
+							"enum":        []any{"inspect", "edit", "verify"},
 						},
 						"remove": map[string]any{
 							"type":        "array",
