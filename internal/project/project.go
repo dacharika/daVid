@@ -85,6 +85,15 @@ type Source struct {
 	// with no ffmpeg worker configured (probing is skipped, not an error) or on a
 	// source recorded before probing existed.
 	Probe *Probe `json:"probe,omitempty"`
+	// Proxy is a handle to the small, fast-seeking copy of the source built once
+	// at ingest, so the expensive steps do not repeatedly seek through a 4K
+	// master. Empty when ingest ran with no Deriver configured, or on a source
+	// recorded before derivation existed.
+	Proxy string `json:"proxy,omitempty"`
+	// Audio is a handle to the source's audio track on its own, extracted once at
+	// ingest — transcription wants samples, not pixels. Empty under the same
+	// conditions as Proxy.
+	Audio string `json:"audio,omitempty"`
 }
 
 // Probe is a source's intrinsic video dimensions, measured once at ingest by the
@@ -107,6 +116,32 @@ type Probe struct {
 // the caller.
 type Prober interface {
 	Probe(path string) (Probe, error)
+}
+
+// Deriver builds the media ingest caches alongside the source: a small proxy the
+// expensive steps run on instead of the original, and the audio track on its
+// own. Like Prober it is called only on a content-hash cache miss, so a
+// re-ingest of unchanged bytes stays a pure cache hit that runs neither, and a
+// nil Deriver skips derivation entirely — ingest still records the source, just
+// without handles.
+//
+// The destination path is chosen by Ingest and passed in rather than returned,
+// which is what keeps internal/project free of any worker import: the ffmpeg
+// boundary lives in the caller, exactly as it does for Prober.
+type Deriver interface {
+	Proxy(src, dest string) error
+	Audio(src, dest string) error
+}
+
+// ProxyPath and AudioPath are where a source's derived media live: beside every
+// other artifact in the cache, keyed on the source's content hash so two
+// sources never collide and a re-ingest finds the same files.
+func (p Project) ProxyPath(hash string) string {
+	return filepath.Join(p.CacheDir(), "proxy-"+hash+".mp4")
+}
+
+func (p Project) AudioPath(hash string) string {
+	return filepath.Join(p.CacheDir(), "audio-"+hash+".wav")
 }
 
 // Initialized reports whether the project manifest exists on disk.
@@ -220,7 +255,7 @@ type IngestResult struct {
 // it is recorded, so its pixel dimensions, duration and fps are stored on the
 // Source and read straight back on the next cache-hit re-run. A nil prober skips
 // probing: the source is still recorded, just without a Probe.
-func (p Project) Ingest(path string, prober Prober) (IngestResult, error) {
+func (p Project) Ingest(path string, prober Prober, deriver Deriver) (IngestResult, error) {
 	if !p.Initialized() {
 		return IngestResult{}, ErrNotInitialized
 	}
@@ -248,6 +283,27 @@ func (p Project) Ingest(path string, prober Prober) (IngestResult, error) {
 			return IngestResult{}, err
 		}
 		src.Probe = &pr
+	}
+
+	// Same contract as probing, one step further: build the proxy and the audio
+	// track once, here, so every later step reads a small file instead of the
+	// master and a re-ingest runs neither. Handles are recorded on the source, so
+	// they come back with the cache hit.
+	if deriver != nil {
+		if err := os.MkdirAll(p.CacheDir(), 0o755); err != nil {
+			return IngestResult{}, err
+		}
+		proxy := p.ProxyPath(src.Hash)
+		if err := deriver.Proxy(path, proxy); err != nil {
+			return IngestResult{}, err
+		}
+		src.Proxy = proxy
+
+		audio := p.AudioPath(src.Hash)
+		if err := deriver.Audio(path, audio); err != nil {
+			return IngestResult{}, err
+		}
+		src.Audio = audio
 	}
 
 	// Record the source (deduped by hash) and store the cache entry so the next
