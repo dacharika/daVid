@@ -312,3 +312,95 @@ func TestJoinTokensReassemblesWhisperWordSegments(t *testing.T) {
 		}
 	}
 }
+
+// The default must stay a hard cut. A dissolve changes the timeline's whole
+// shape — two tracks instead of one, transitions, extended out points — so an
+// unasked-for one would silently rewrite every existing edit.
+func TestReframeDefaultsToAHardCut(t *testing.T) {
+	dir, _ := reframeFixture(t, []project.Turn{
+		{Speaker: "left", Start: 0, End: 4},
+		{Speaker: "right", Start: 4, End: 9},
+	})
+	var out bytes.Buffer
+	if err := run([]string{"reframe-edit", dir, "--plan"}, strings.NewReader("{}"), &out); err != nil {
+		t.Fatalf("reframe-edit: %v", err)
+	}
+	var res struct {
+		Timeline string `json:"timeline"`
+	}
+	_ = json.Unmarshal(out.Bytes(), &res)
+	xml, err := os.ReadFile(res.Timeline)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(xml), "luma") {
+		t.Error("the default edit contains a luma transition; it must be a hard cut")
+	}
+	if n := strings.Count(string(xml), "<playlist"); n != 1 {
+		t.Errorf("the default edit has %d playlists, want 1 — a hard cut needs no A/B roll", n)
+	}
+}
+
+// With a dissolve the edit becomes an A/B roll: two tracks, one luma transition
+// per cut, and every shot but the last held past its cut so the next has
+// something to blend with. A shot blended past media it does not have renders
+// black, so the held out point is the part worth pinning.
+func TestReframeDissolveBuildsAnABRollWithHeldTails(t *testing.T) {
+	dir, _ := reframeFixture(t, []project.Turn{
+		{Speaker: "left", Start: 0, End: 4},
+		{Speaker: "right", Start: 4, End: 9},
+		{Speaker: "left", Start: 9, End: 14},
+	})
+	body, _ := json.Marshal(map[string]any{"dissolve": 0.5})
+	var out bytes.Buffer
+	if err := run([]string{"reframe-edit", dir, "--plan"}, bytes.NewReader(body), &out); err != nil {
+		t.Fatalf("reframe-edit: %v", err)
+	}
+	var res struct {
+		Timeline string `json:"timeline"`
+		Shots    []struct {
+			Start float64 `json:"start"`
+			End   float64 `json:"end"`
+		} `json:"shots"`
+	}
+	_ = json.Unmarshal(out.Bytes(), &res)
+	xml, err := os.ReadFile(res.Timeline)
+	if err != nil {
+		t.Fatal(err)
+	}
+	doc := string(xml)
+
+	if n := strings.Count(doc, "<playlist"); n != 2 {
+		t.Errorf("dissolve edit has %d playlists, want 2 (the A/B roll a blend requires)", n)
+	}
+	if n := strings.Count(doc, ">luma<"); n != len(res.Shots)-1 {
+		t.Errorf("%d luma transitions for %d shots, want %d (one per cut)",
+			n, len(res.Shots), len(res.Shots)-1)
+	}
+	// Every shot but the last is held half a second past its cut.
+	tl, err := timeline.Parse(xml)
+	if err != nil {
+		t.Fatalf("dissolve edit does not parse back: %v", err)
+	}
+	for i, p := range tl.Producers {
+		want := timeline.Clock(res.Shots[i].End)
+		if i < len(tl.Producers)-1 {
+			want = timeline.Clock(res.Shots[i].End + 0.5)
+		}
+		if p.Out != want {
+			t.Errorf("shot %d out = %q, want %q (a tail that is not held blends into black)", i+1, p.Out, want)
+		}
+	}
+}
+
+// A dissolve that outlasts a shot would blend three pictures at once.
+func TestReframeRejectsADissolveLongerThanAShot(t *testing.T) {
+	dir, _ := reframeFixture(t, []project.Turn{
+		{Speaker: "left", Start: 0, End: 2},
+		{Speaker: "right", Start: 2, End: 9},
+	})
+	body, _ := json.Marshal(map[string]any{"dissolve": 3.0, "minShot": 0.5})
+	var out bytes.Buffer
+	err := run([]string{"reframe-edit", dir, "--plan"}, bytes.NewReader(body), &out)
+	assertReframeCode(t, err, "input.invalid")
+}

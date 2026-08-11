@@ -437,6 +437,7 @@ func Default() Catalog {
 						"quality":          map[string]any{"type": "string", "description": "render quality: 'proxy' for a fast look, 'final' for delivery (default)"},
 						"keep":             map[string]any{"type": "number", "description": "fraction of frame width a single keeps; smaller punches in tighter. Defaults to 0.58"},
 						"minShot":          map[string]any{"type": "number", "description": "shortest shot in seconds; shorter ones are absorbed so the edit does not ping-pong. Defaults to 1.8"},
+						"dissolve":         map[string]any{"type": "number", "description": "cross-fade between shots over this many seconds; 0 (default) is a hard cut. Must be shorter than every shot, or the edit is refused rather than blending three pictures at once"},
 						"leftCentre":       map[string]any{"type": "number", "description": "normalised horizontal centre of the left seat; defaults to 0.28"},
 						"rightCentre":      map[string]any{"type": "number", "description": "normalised horizontal centre of the right seat; defaults to 0.72"},
 						"renderWorker":     map[string]any{"type": "string", "description": "path to the melt render worker; defaults to the CUTVEC_MELT_WORKER env var"},

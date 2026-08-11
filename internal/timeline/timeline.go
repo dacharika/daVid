@@ -168,6 +168,73 @@ func (t *Timeline) Sequence(id string) {
 	t.Tractor = &Tractor{ID: id + "_tractor", Tracks: []Track{{Producer: id}}}
 }
 
+// Span is where one shot sits on the finished timeline, in seconds.
+type Span struct{ Start, End float64 }
+
+// DissolveSequence wires the producers into a cross-faded edit instead of a
+// straight cut sequence, and reports the transition windows it created.
+//
+// A dissolve cannot be expressed on one track. MLT blends two TRACKS, so
+// consecutive shots have to overlap in time, which means alternating them
+// across two playlists — the A/B roll every NLE builds under the hood. Odd
+// shots go to one track, even to the other; each shot is held `dissolve`
+// seconds past its cut point so the next shot's opening overlaps its tail; and
+// a luma transition covers each overlap.
+//
+// The caller is responsible for the producers' own out points covering the
+// held tail: a shot blended past media it does not have renders black.
+// Callers should extend each producer by `dissolve` for every shot but the last.
+//
+// spans must be in timeline order and must match t.Producers one-for-one.
+// A dissolve of zero returns nothing and leaves the timeline untouched, so the
+// caller can fall back to Sequence and emit exactly what it emitted before.
+func (t *Timeline) DissolveSequence(id string, spans []Span, dissolve float64) []Span {
+	if dissolve <= 0 || len(spans) != len(t.Producers) || len(spans) < 2 {
+		return nil
+	}
+	tracks := []Playlist{{ID: id + "_a"}, {ID: id + "_b"}}
+	cursor := []float64{0, 0}
+	var overlaps []Span
+
+	for i, p := range t.Producers {
+		lane := i % 2
+		start := spans[i].Start
+		if gap := start - cursor[lane]; gap > 0 {
+			tracks[lane].Entries = append(tracks[lane].Entries, Entry{Blank: Clock(gap)})
+		}
+		tracks[lane].Entries = append(tracks[lane].Entries, Entry{Producer: p.ID})
+
+		end := spans[i].End
+		if i < len(spans)-1 {
+			// Held past the cut so the next shot has something to blend with.
+			end += dissolve
+			overlaps = append(overlaps, Span{Start: spans[i+1].Start, End: spans[i+1].Start + dissolve})
+		}
+		cursor[lane] = end
+	}
+
+	t.Playlists = tracks
+	t.Tractor = &Tractor{
+		ID:     id + "_tractor",
+		Tracks: []Track{{Producer: tracks[0].ID}, {Producer: tracks[1].ID}},
+	}
+	// One transition per overlap. a_track/b_track alternate with the lanes, so
+	// each blend runs in the direction the cut actually goes.
+	for i, ov := range overlaps {
+		a, b := 0, 1
+		if i%2 == 1 {
+			a, b = 1, 0
+		}
+		t.Tractor.Transitions = append(t.Tractor.Transitions, NewTransition("luma",
+			"in", Clock(ov.Start),
+			"out", Clock(ov.End),
+			"a_track", fmt.Sprintf("%d", a),
+			"b_track", fmt.Sprintf("%d", b),
+		))
+	}
+	return overlaps
+}
+
 // DefaultBedGain is the level a music bed sits at when no gain is named: quiet
 // enough that dialogue stays audible above it, matching the schema's promise
 // that beds are mixed under the edit rather than substituted over it.
