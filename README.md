@@ -52,11 +52,11 @@ echo '{"project":"proj"}' | ./build/cutvec status --json
 file is a **cache hit** (`cached:true`) that records nothing — the step is
 deterministic, idempotent, and resumable. On the miss it also measures the
 source and builds its derived media through the ffmpeg worker: a small
-fast-seeking **proxy** so later steps never re-read a 4K master, and the **audio
-track** on its own for transcription. Both are handles keyed on the content
-hash, so the cache hit returns them without rebuilding — on a 379 MB 4K clip
-that is 6.7s the first time and 0.16s every time after. With no ffmpeg worker
-configured the source is still recorded, just without probe or handles. `status` returns the state graph — the
+fast-seeking **proxy**, and the **audio track** on its own. Both are handles
+keyed on the content hash, so the cache hit returns them without rebuilding — on
+a 379 MB 4K clip that is 6.7s the first time and 0.16s every time after. With no
+ffmpeg worker configured the source is still recorded, just without probe or
+handles. `status` returns the state graph — the
 sources ingested and each artifact marked `done`/`pending` — so an agent decides
 what to run next from one JSON read. Every mutating tool takes `--plan`.
 
@@ -163,6 +163,34 @@ missing/too-many project returns `input.invalid`; an uninitialised directory
 returns `project.uninitialized`; a project with no built timeline returns
 `timeline.missing`; no configured worker returns `worker.missing`; and a worker
 that crashes or does not write the output maps to `worker.crashed`/`worker.protocol`.
+
+## What actually reads the proxy
+
+A cached artifact nobody reads is just disk. Two steps read the proxy, and the
+numbers are why — both measured on a 20s 4K clip:
+
+| step | reads | effect |
+|---|---|---|
+| `speakers` | the proxy | detection **9.40s → 4.15s**, attribution **96.3% → 100%** |
+| `shorts` / `reframe-edit` at `quality: proxy` | the proxy | draft render **11.66s → 4.31s** |
+| the same at `quality: final` | the master | unchanged — a delivery render must keep the resolution |
+| `transcribe` | the master | unchanged, deliberately (see below) |
+
+Detection gets *better* on the proxy, not just faster: downscaling hands the
+detector a frame nearer the size it expects instead of a 4K one it has to fit.
+Seat positions from both agree to within 0.002 normalised (~6px at 4K).
+
+Substituting the proxy is only safe where the maths is resolution-independent.
+Seats are normalised and `reframe-edit`'s punch-in works in profile space, so
+both travel unchanged. `shorts` crops in **source pixels**, so its resource and
+its dimensions are chosen together by one function — pairing the proxy with the
+master's dimensions renders a perfectly valid video of the wrong thing (the
+uncropped wide shot, letterboxed, no error). A proxy that is missing or was
+recorded without dimensions falls back to the master.
+
+`transcribe` still decodes the master, on purpose: reusing the cached audio was
+measured at **0.885s** saved on a 23 GB source, because ffmpeg reads only the
+audio stream and never decodes video. Not worth the coupling.
 
 ## Speakers: who is talking, when
 
