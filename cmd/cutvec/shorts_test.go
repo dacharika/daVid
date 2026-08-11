@@ -94,6 +94,35 @@ func TestBuildSRTHookNeverOverlapsFirstCaption(t *testing.T) {
 	}
 }
 
+// Pushing a cue clear of the hook must not erase it. When every word of a group
+// is spoken inside the hook window, clamping the start to hookSeconds and the
+// end to no-less-than-the-start collapses the cue to zero length — and a
+// zero-length SRT cue renders as nothing, so the words disappear with no error
+// and no sign anything was dropped. Every cue has to stay readable.
+func TestBuildSRTCaptionPushedPastTheHookStaysOnScreen(t *testing.T) {
+	tr := project.Transcript{Words: []project.Word{
+		// The whole group finishes before the 2.5s hook card does.
+		{Word: "hey", Start: 0.1, End: 0.4},
+		{Word: "there", Start: 0.5, End: 0.9},
+		{Word: "folks", Start: 1.0, End: 1.4},
+	}}
+	srt := buildSRT(tr, 0, 10, "Watch this")
+	cues := parseSRTCues(t, srt)
+	assertNoCueOverlap(t, cues)
+	if len(cues) < 2 {
+		t.Fatalf("caption cue was dropped entirely:\n%s", srt)
+	}
+	for _, c := range cues {
+		if c.end <= c.start {
+			t.Errorf("cue %q is zero-length (%.3f --> %.3f) and will never render:\n%s",
+				c.text, c.start, c.end, srt)
+		}
+	}
+	if d := cues[1].end - cues[1].start; d < minCaptionShow {
+		t.Errorf("pushed caption shows for %.3fs, want at least %.3fs:\n%s", d, minCaptionShow, srt)
+	}
+}
+
 // The non-overlap guarantee holds with no hook too: consecutive caption cues
 // must not overlap each other.
 func TestBuildSRTCaptionsDoNotOverlapWithoutHook(t *testing.T) {

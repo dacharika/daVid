@@ -37,6 +37,12 @@ const (
 	// opening window instead of rendering stacked over the first captions.
 	hookSeconds = 2.5
 
+	// minCaptionShow is the shortest a caption may stay on screen. A cue pushed
+	// clear of an earlier one (most often the hook card) can otherwise end
+	// before or exactly at its own pushed start, and a zero-length SRT cue
+	// simply never renders — the words vanish with nothing to indicate it.
+	minCaptionShow = 0.5
+
 	// headShouldersHeightKeep is the fraction of the source height the vertical
 	// crop window spans. Less than the full height zooms in past a full-body
 	// two-shot to a head-and-shoulders framing — the difference between a clip
@@ -526,8 +532,12 @@ func buildSRT(t project.Transcript, start, end float64, hook string) string {
 		if cueStart < prevEnd {
 			cueStart = prevEnd
 		}
-		if cueEnd < cueStart {
-			cueEnd = cueStart
+		if cueEnd < cueStart+minCaptionShow {
+			// Clamping the end to the start alone yields a zero-length cue, which
+			// renders as nothing: words spoken entirely inside the hook window get
+			// pushed to hookSeconds and then end there too, so the caption is
+			// dropped silently. Hold a pushed cue long enough to actually read.
+			cueEnd = cueStart + minCaptionShow
 		}
 		n++
 		fmt.Fprintf(&b, "%d\n%s --> %s\n%s\n\n", n,
