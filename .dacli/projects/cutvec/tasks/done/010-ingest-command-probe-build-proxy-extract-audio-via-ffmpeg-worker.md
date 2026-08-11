@@ -33,3 +33,11 @@ downstream steps run on a fast proxy and clean audio, cached by content hash
   a typed *Probe{Width,Height,Duration,Fps} that shorts/reframe-edit read for the crop
   window, so merging it would break the 023 framing fix. Remaining work re-filed as 039,
   scoped additively against current main. Filed dacli#443 for the accept-on-propose gap.
+- 2026-08-11 a-root: RESOLVED. Task 039 landed the missing half in PR #50 — ffmpeg_worker
+  gained proxy and audio ops, Source gained both handles beside the typed Probe (which was
+  deliberately NOT changed to the map[string]any PR #7 proposed, since shorts/reframe-edit
+  read Probe.Width/Height for the crop window). Verified on main against the real worker:
+  a 379 MB 4K clip ingests in 6.683s and re-ingests in 0.159s as a pure cache hit, yielding
+  a 3.9 MB proxy and 625 KB of 16 kHz mono PCM. The acceptance box above is now genuinely
+  satisfiable; it stays unchecked because this task closed before the work existed, and
+  039 is where the work is recorded.
