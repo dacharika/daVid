@@ -26,3 +26,7 @@ shorts and search agree on the top moments and two runs over one index cannot yi
 - 2026-08-11T05:04:30Z verified by `go build ./... && go test ./...` (exit 0)
 - 2026-08-11T05:04:30Z deliverable: no dacli/034-shorts-rank-moments-with-rankcandidates-before-selecting-so-the-recipe-is branch — nothing to check against main
 - 2026-08-11T05:04:30Z completed by a-root
+- 2026-08-11T08:12:10Z accepted by a-root
+- 2026-08-11T08:12:10Z verified by `go build ./... && go test ./...` (exit 0)
+- 2026-08-11T08:12:10Z deliverable: no dacli/034-shorts-rank-moments-with-rankcandidates-before-selecting-so-the-recipe-is branch — nothing to check against main
+- 2026-08-11T08:12:10Z completed by a-root

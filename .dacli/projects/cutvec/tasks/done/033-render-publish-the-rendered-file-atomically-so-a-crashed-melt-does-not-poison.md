@@ -31,3 +31,7 @@ a render that dies mid-encode does not leave a truncated mp4 that the next resum
 - 2026-08-11T05:04:30Z verified by `go build ./... && go test ./...` (exit 0)
 - 2026-08-11T05:04:30Z deliverable: no dacli/033-render-publish-the-rendered-file-atomically-so-a-crashed-melt-does-not-poison branch — nothing to check against main
 - 2026-08-11T05:04:30Z completed by a-root
+- 2026-08-11T08:12:09Z accepted by a-root
+- 2026-08-11T08:12:09Z verified by `go build ./... && go test ./...` (exit 0)
+- 2026-08-11T08:12:09Z deliverable: no dacli/033-render-publish-the-rendered-file-atomically-so-a-crashed-melt-does-not-poison branch — nothing to check against main
+- 2026-08-11T08:12:09Z completed by a-root

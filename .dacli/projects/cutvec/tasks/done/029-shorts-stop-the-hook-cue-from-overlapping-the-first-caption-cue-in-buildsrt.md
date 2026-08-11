@@ -46,3 +46,7 @@ the hook card stands alone in the opening 2.5s instead of rendering stacked with
 - 2026-08-11T05:04:29Z verified by `go build ./... && go test ./...` (exit 0)
 - 2026-08-11T05:04:29Z deliverable: no dacli/029-shorts-stop-the-hook-cue-from-overlapping-the-first-caption-cue-in-buildsrt branch — nothing to check against main
 - 2026-08-11T05:04:29Z completed by a-root
+- 2026-08-11T08:12:08Z accepted by a-root
+- 2026-08-11T08:12:08Z verified by `go build ./... && go test ./...` (exit 0)
+- 2026-08-11T08:12:08Z deliverable: no dacli/029-shorts-stop-the-hook-cue-from-overlapping-the-first-caption-cue-in-buildsrt branch — nothing to check against main
+- 2026-08-11T08:12:08Z completed by a-root
