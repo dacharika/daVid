@@ -123,6 +123,7 @@ func Default() Catalog {
 					"properties": map[string]any{
 						"project":    map[string]any{"type": "string", "description": "the project directory"},
 						"source":     map[string]any{"type": "string", "description": "path to the media file to ingest"},
+						"rehash":     map[string]any{"type": "boolean", "description": "recompute the full content hash instead of trusting the recorded fingerprint (size, mtime, both 8MB ends). Only needed if a file was changed without its mtime moving."},
 						"worker":     map[string]any{"type": "string", "description": "ffmpeg worker executable that probes the source and builds its proxy and audio track; defaults to the CUTVEC_FFMPEG_WORKER env var. When unset the source is ingested without a probe or derived media."},
 						"workerArgs": map[string]any{"type": "array", "description": "leading arguments for the ffmpeg worker executable", "items": map[string]any{"type": "string"}},
 					},

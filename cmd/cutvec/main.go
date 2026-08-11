@@ -370,6 +370,9 @@ func initCmd(args []string, stdin io.Reader, stdout io.Writer) error {
 // CUTVEC_FFMPEG_WORKER env var is used, and when neither is set the source is
 // still ingested, just without a probe.
 type ingestRequest struct {
+	// Rehash forces the full content hash to be recomputed instead of trusting
+	// the recorded fingerprint. Correctness escape hatch, not a normal path.
+	Rehash     bool     `json:"rehash"`
 	Project    string   `json:"project"`
 	Source     string   `json:"source"`
 	Worker     string   `json:"worker"`
@@ -407,6 +410,12 @@ func ingestCmd(args []string, stdin io.Reader, stdout io.Writer) error {
 			WithHint(`set "source" to a media file to ingest`)
 	}
 	proj := project.Open(req.Project)
+	// Drop the recorded fingerprint first, so the content hash is recomputed
+	// from every byte. A vanished or unreadable source is left to the ingest
+	// below to report — it already has the good error for that.
+	if req.Rehash {
+		_ = proj.ForgetFingerprint(req.Source)
+	}
 	if !proj.Initialized() {
 		return axerror.New("project.uninitialized", "project is not initialised").
 			WithHint("run `cutvec init` on this directory first")
