@@ -31,6 +31,26 @@ func TestHelperProcess(t *testing.T) {
 	_ = json.Unmarshal(in, &req)
 
 	switch os.Getenv("WORKER_MODE") {
+	case "ffmpeg":
+		// The real ffmpeg worker answers three ops from one executable, so this
+		// stand-in dispatches on the op rather than the mode: ingest calls all
+		// three through a single configured worker. proxy and audio write real
+		// files, because a handle pointing at nothing is the failure worth
+		// catching.
+		res := map[string]any{}
+		switch req.Op {
+		case "probe":
+			res = map[string]any{"width": 1920, "height": 1080, "duration": 12.5, "fps": 30.0}
+		case "proxy", "audio":
+			dest, _ := req.Params["dest"].(string)
+			if dest != "" {
+				_ = os.WriteFile(dest, []byte("fake "+req.Op), 0o644)
+			}
+			res = map[string]any{"output": dest, "bytes": 9}
+		}
+		out, _ := json.Marshal(worker.Response{Version: worker.ContractVersion, Result: res})
+		os.Stdout.Write(out)
+		os.Exit(0)
 	case "probe":
 		// Stand in for ffmpeg: report the source's intrinsic dimensions without
 		// touching a real media file or ffprobe binary.
@@ -117,6 +137,14 @@ func TestHelperProcess(t *testing.T) {
 		// Echo the layout the core sent so the test can prove the fixed layout
 		// travels to the worker, and return two per-time turns.
 		layout, _ := req.Params["layout"].(string)
+		// WORKER_ECHO_FILE records which media path the core actually handed
+		// over. The result shape has nowhere to carry it — Speakers.Source is
+		// overwritten with the content hash by the core — so the only way to
+		// assert "detection ran on the proxy" is to have the worker say so.
+		if echo := os.Getenv("WORKER_ECHO_FILE"); echo != "" {
+			s, _ := req.Params["source"].(string)
+			_ = os.WriteFile(echo, []byte(s), 0o644)
+		}
 		resp := worker.Response{
 			Version: worker.ContractVersion,
 			Result: map[string]any{
@@ -1102,6 +1130,87 @@ func TestSpeakersTurns(t *testing.T) {
 	}
 	if got.Source != res.Source {
 		t.Fatalf("analysis source = %q, want the returned handle's source %q", got.Source, res.Source)
+	}
+}
+
+// Detection runs on the proxy when ingest built one, and falls back to the
+// master when it did not. This is what the proxy is for: measured on a 20s 4K
+// clip it cut detection from 9.40s to 4.15s and raised attribution from 96.3%
+// to 100%, with seat positions agreeing to within 0.002 normalised (~6px at 4K).
+// The substitution is only safe because the worker's output is time-based and
+// normalised — if a seat ever carried pixel coordinates, crops computed for the
+// master would be silently wrong by the scale factor, so this test is also the
+// guard on that assumption holding.
+func TestSpeakersAnalysesTheProxyWhenOneExists(t *testing.T) {
+	echo := filepath.Join(t.TempDir(), "handed-to-worker.txt")
+
+	// Ingest through the ffmpeg stand-in so the source really carries a proxy.
+	dir := filepath.Join(t.TempDir(), "proj")
+	runJSON(t, []string{"init"}, map[string]any{"project": dir}, nil)
+	srcPath := filepath.Join(t.TempDir(), "raw.mp4")
+	if err := os.WriteFile(srcPath, []byte("master bytes"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("GO_WANT_HELPER_PROCESS", "1")
+	t.Setenv("WORKER_MODE", "ffmpeg")
+	var ing struct {
+		Source project.Source `json:"source"`
+	}
+	runJSON(t, []string{"ingest"}, map[string]any{
+		"project": dir, "source": srcPath,
+		"worker": os.Args[0], "workerArgs": []string{"-test.run=TestHelperProcess"},
+	}, &ing)
+	if ing.Source.Proxy == "" {
+		t.Fatal("fixture did not produce a proxy, so this test proves nothing")
+	}
+
+	// Now run detection; the speakers stand-in records the path it was given.
+	t.Setenv("WORKER_MODE", "speakers")
+	t.Setenv("WORKER_ECHO_FILE", echo)
+	var out bytes.Buffer
+	b, _ := json.Marshal(map[string]any{
+		"worker": os.Args[0], "workerArgs": []string{"-test.run=TestHelperProcess"},
+	})
+	if err := run([]string{"speakers", dir, "--json"}, bytes.NewReader(b), &out); err != nil {
+		t.Fatalf("speakers = %v", err)
+	}
+	handed, err := os.ReadFile(echo)
+	if err != nil {
+		t.Fatalf("worker recorded no source path: %v", err)
+	}
+	if string(handed) != ing.Source.Proxy {
+		t.Errorf("detection ran on %q, want the proxy %q", handed, ing.Source.Proxy)
+	}
+
+	// With the proxy file gone, detection must fall back to the master rather
+	// than failing — the proxy is an optimisation, not a precondition.
+	if err := os.Remove(ing.Source.Proxy); err != nil {
+		t.Fatal(err)
+	}
+	dir2 := filepath.Join(t.TempDir(), "proj2")
+	runJSON(t, []string{"init"}, map[string]any{"project": dir2}, nil)
+	t.Setenv("WORKER_MODE", "ffmpeg")
+	var ing2 struct {
+		Source project.Source `json:"source"`
+	}
+	runJSON(t, []string{"ingest"}, map[string]any{
+		"project": dir2, "source": srcPath,
+		"worker": os.Args[0], "workerArgs": []string{"-test.run=TestHelperProcess"},
+	}, &ing2)
+	if err := os.Remove(ing2.Source.Proxy); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("WORKER_MODE", "speakers")
+	out.Reset()
+	if err := run([]string{"speakers", dir2, "--json"}, bytes.NewReader(b), &out); err != nil {
+		t.Fatalf("speakers with a missing proxy = %v, want it to fall back", err)
+	}
+	handed2, err := os.ReadFile(echo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(handed2) != ing2.Source.Path {
+		t.Errorf("fallback ran on %q, want the master %q", handed2, ing2.Source.Path)
 	}
 }
 
