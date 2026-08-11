@@ -418,7 +418,7 @@ func ingestCmd(args []string, stdin io.Reader, stdout io.Writer) error {
 		}
 		return emitJSON(stdout, ingestResult{Source: src, Cached: proj.CacheHit(src.Hash), Planned: true})
 	}
-	res, err := proj.Ingest(req.Source, resolveProber(req))
+	res, err := proj.Ingest(req.Source, resolveProber(req), resolveDeriver(req))
 	if err != nil {
 		return mapSourceErr(err)
 	}
@@ -459,6 +459,46 @@ func resolveProber(req ingestRequest) project.Prober {
 		return nil
 	}
 	return ffmpegProber{w: worker.Worker{Path: path, Args: req.WorkerArgs}}
+}
+
+// ffmpegDeriver builds a source's derived media through the same ffmpeg worker
+// the prober uses — one executable to install and configure, three ops.
+type ffmpegDeriver struct {
+	w worker.Worker
+}
+
+// Proxy builds the small, fast-seeking copy the expensive steps read instead of
+// the master.
+func (fd ffmpegDeriver) Proxy(src, dest string) error {
+	_, err := fd.w.Invoke(context.Background(), worker.Request{
+		Op:     "proxy",
+		Params: map[string]any{"source": src, "dest": dest},
+	})
+	return err // already an *axerror.Error from the worker boundary
+}
+
+// Audio extracts the source's audio track on its own.
+func (fd ffmpegDeriver) Audio(src, dest string) error {
+	_, err := fd.w.Invoke(context.Background(), worker.Request{
+		Op:     "audio",
+		Params: map[string]any{"source": src, "dest": dest},
+	})
+	return err
+}
+
+// resolveDeriver returns the ffmpeg deriver ingest should use, or nil when no
+// ffmpeg worker is configured. Resolved the same way as the prober and from the
+// same worker, so configuring one configures both; a nil deriver means the
+// source is ingested without derived media rather than failing.
+func resolveDeriver(req ingestRequest) project.Deriver {
+	path := req.Worker
+	if path == "" {
+		path = os.Getenv("CUTVEC_FFMPEG_WORKER")
+	}
+	if path == "" {
+		return nil
+	}
+	return ffmpegDeriver{w: worker.Worker{Path: path, Args: req.WorkerArgs}}
 }
 
 // probeFromResult lifts the ffmpeg worker's result map into a project.Probe. A

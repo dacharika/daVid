@@ -28,7 +28,7 @@ func TestIngestIsContentHashCacheHit(t *testing.T) {
 
 	src := writeSource(t, "same bytes")
 
-	first, err := p.Ingest(src, nil)
+	first, err := p.Ingest(src, nil, nil)
 	if err != nil {
 		t.Fatalf("first ingest: %v", err)
 	}
@@ -39,7 +39,7 @@ func TestIngestIsContentHashCacheHit(t *testing.T) {
 		t.Fatalf("cache entry missing after ingest of %q", first.Source.Hash)
 	}
 
-	second, err := p.Ingest(src, nil)
+	second, err := p.Ingest(src, nil, nil)
 	if err != nil {
 		t.Fatalf("second ingest: %v", err)
 	}
@@ -60,7 +60,7 @@ func TestIngestIsContentHashCacheHit(t *testing.T) {
 
 	// Different content is a genuinely new source: another miss, a second entry.
 	other := writeSource(t, "different bytes")
-	res, err := p.Ingest(other, nil)
+	res, err := p.Ingest(other, nil, nil)
 	if err != nil {
 		t.Fatalf("ingest other: %v", err)
 	}
@@ -84,6 +84,102 @@ func (c *countingProber) Probe(string) (Probe, error) {
 	return c.probe, nil
 }
 
+// countingDeriver records what it was asked to build and writes a stand-in file
+// at each destination, so a test can assert both the handles and the file the
+// handle points at without needing ffmpeg.
+type countingDeriver struct {
+	proxyCalls, audioCalls int
+	proxyDest, audioDest   string
+}
+
+func (c *countingDeriver) Proxy(_, dest string) error {
+	c.proxyCalls++
+	c.proxyDest = dest
+	return os.WriteFile(dest, []byte("proxy bytes"), 0o644)
+}
+
+func (c *countingDeriver) Audio(_, dest string) error {
+	c.audioCalls++
+	c.audioDest = dest
+	return os.WriteFile(dest, []byte("audio bytes"), 0o644)
+}
+
+// Derived media follows exactly the contract the probe does: built once on the
+// cache miss, recorded on the source as handles, and returned by the cache-hit
+// re-run without the deriver running again. Re-deriving on every ingest would
+// undo the point — transcoding a 4K master is the most expensive thing the
+// pipeline does, and ingest is the step most likely to be re-run.
+func TestIngestDerivesProxyAndAudioOnceAndCaches(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "proj")
+	p := Open(dir)
+	if _, _, err := p.Init(""); err != nil {
+		t.Fatal(err)
+	}
+	src := writeSource(t, "video bytes")
+	der := &countingDeriver{}
+
+	first, err := p.Ingest(src, nil, der)
+	if err != nil {
+		t.Fatalf("first ingest: %v", err)
+	}
+	if first.Source.Proxy == "" || first.Source.Audio == "" {
+		t.Fatalf("ingest returned no derived handles: %+v", first.Source)
+	}
+	// The handles must be the content-hash-keyed cache paths, so two sources
+	// cannot collide and a re-ingest finds the same files.
+	if want := p.ProxyPath(first.Source.Hash); first.Source.Proxy != want {
+		t.Errorf("proxy handle = %q, want %q", first.Source.Proxy, want)
+	}
+	if want := p.AudioPath(first.Source.Hash); first.Source.Audio != want {
+		t.Errorf("audio handle = %q, want %q", first.Source.Audio, want)
+	}
+	// A handle that points at nothing is worse than no handle at all.
+	for _, h := range []string{first.Source.Proxy, first.Source.Audio} {
+		if _, err := os.Stat(h); err != nil {
+			t.Errorf("handle %q does not exist: %v", h, err)
+		}
+	}
+	if der.proxyCalls != 1 || der.audioCalls != 1 {
+		t.Fatalf("deriver ran proxy=%d audio=%d on the miss, want 1 each", der.proxyCalls, der.audioCalls)
+	}
+
+	second, err := p.Ingest(src, nil, der)
+	if err != nil {
+		t.Fatalf("second ingest: %v", err)
+	}
+	if !second.Cached {
+		t.Fatal("second ingest cached = false, want true")
+	}
+	if second.Source.Proxy != first.Source.Proxy || second.Source.Audio != first.Source.Audio {
+		t.Errorf("cache hit returned different handles: %+v vs %+v", second.Source, first.Source)
+	}
+	if der.proxyCalls != 1 || der.audioCalls != 1 {
+		t.Fatalf("deriver ran proxy=%d audio=%d total, want 1 each (nothing on the cache hit)",
+			der.proxyCalls, der.audioCalls)
+	}
+}
+
+// A missing ffmpeg worker must not fail the ingest: derived media is a best
+// effort, exactly as probing is. Losing the ability to record a source because
+// ffmpeg is absent would make every later step unreachable.
+func TestIngestWithoutDeriverStillRecordsTheSource(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "proj")
+	p := Open(dir)
+	if _, _, err := p.Init(""); err != nil {
+		t.Fatal(err)
+	}
+	res, err := p.Ingest(writeSource(t, "no ffmpeg here"), nil, nil)
+	if err != nil {
+		t.Fatalf("ingest with no deriver: %v", err)
+	}
+	if res.Source.Hash == "" {
+		t.Fatal("source was not recorded")
+	}
+	if res.Source.Proxy != "" || res.Source.Audio != "" {
+		t.Errorf("handles reported with no deriver: %+v", res.Source)
+	}
+}
+
 // TestIngestProbesOnceAndCaches proves the probe is measured on the cache miss,
 // stored on the source, returned unchanged on the cache-hit re-run, and that the
 // prober runs exactly once (never on the hit).
@@ -96,7 +192,7 @@ func TestIngestProbesOnceAndCaches(t *testing.T) {
 	src := writeSource(t, "video bytes")
 	prober := &countingProber{probe: Probe{Width: 1920, Height: 1080, Duration: 12.5, Fps: 30}}
 
-	first, err := p.Ingest(src, prober)
+	first, err := p.Ingest(src, prober, nil)
 	if err != nil {
 		t.Fatalf("first ingest: %v", err)
 	}
@@ -111,7 +207,7 @@ func TestIngestProbesOnceAndCaches(t *testing.T) {
 	}
 
 	// The cache-hit re-run returns the same probe and runs no prober.
-	second, err := p.Ingest(src, prober)
+	second, err := p.Ingest(src, prober, nil)
 	if err != nil {
 		t.Fatalf("second ingest: %v", err)
 	}
@@ -143,7 +239,7 @@ func TestIngestNilProberRecordsNoProbe(t *testing.T) {
 	if _, _, err := p.Init(""); err != nil {
 		t.Fatal(err)
 	}
-	res, err := p.Ingest(writeSource(t, "no worker here"), nil)
+	res, err := p.Ingest(writeSource(t, "no worker here"), nil, nil)
 	if err != nil {
 		t.Fatalf("ingest: %v", err)
 	}
@@ -156,7 +252,7 @@ func TestIngestNilProberRecordsNoProbe(t *testing.T) {
 // an uninitialised directory rather than silently creating partial state.
 func TestIngestRequiresInit(t *testing.T) {
 	p := Open(filepath.Join(t.TempDir(), "proj"))
-	if _, err := p.Ingest(writeSource(t, "x"), nil); err != ErrNotInitialized {
+	if _, err := p.Ingest(writeSource(t, "x"), nil, nil); err != ErrNotInitialized {
 		t.Fatalf("Ingest on uninit project = %v, want ErrNotInitialized", err)
 	}
 	if _, err := p.Status(); err != ErrNotInitialized {

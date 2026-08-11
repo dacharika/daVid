@@ -123,7 +123,7 @@ func Default() Catalog {
 					"properties": map[string]any{
 						"project":    map[string]any{"type": "string", "description": "the project directory"},
 						"source":     map[string]any{"type": "string", "description": "path to the media file to ingest"},
-						"worker":     map[string]any{"type": "string", "description": "ffmpeg worker executable that probes the source's dimensions; defaults to the CUTVEC_FFMPEG_WORKER env var. When unset the source is ingested without a probe."},
+						"worker":     map[string]any{"type": "string", "description": "ffmpeg worker executable that probes the source and builds its proxy and audio track; defaults to the CUTVEC_FFMPEG_WORKER env var. When unset the source is ingested without a probe or derived media."},
 						"workerArgs": map[string]any{"type": "array", "description": "leading arguments for the ffmpeg worker executable", "items": map[string]any{"type": "string"}},
 					},
 				},
@@ -146,6 +146,14 @@ func Default() Catalog {
 										"duration": map[string]any{"type": "number", "description": "duration in seconds"},
 										"fps":      map[string]any{"type": "number", "description": "frames per second"},
 									},
+								},
+								"proxy": map[string]any{
+									"type":        "string",
+									"description": "handle: a small fast-seeking copy of the source, built once at ingest so later steps do not re-read the master; absent when no ffmpeg worker was configured",
+								},
+								"audio": map[string]any{
+									"type":        "string",
+									"description": "handle: the source's audio track on its own (16 kHz mono PCM), built once at ingest; absent when no ffmpeg worker was configured",
 								},
 							},
 						},

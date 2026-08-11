@@ -57,6 +57,11 @@ func TestWorkerContractAlwaysAnswersWithAJSONResponse(t *testing.T) {
 		script  string
 		request string
 	}{
+		// ffmpeg_worker is the one every ingest goes through, and all three of its
+		// ops must fail structurally rather than tracebacking on a missing file.
+		{"ffmpeg_worker.py", `{"version":1,"op":"probe","params":{"source":"/nonexistent.mp4"}}`},
+		{"ffmpeg_worker.py", `{"version":1,"op":"proxy","params":{"source":"/nonexistent.mp4","dest":"/tmp/p.mp4"}}`},
+		{"ffmpeg_worker.py", `{"version":1,"op":"audio","params":{"source":"/nonexistent.mp4","dest":"/tmp/a.wav"}}`},
 		{"whisper_worker.py", `{"version":1,"op":"transcribe","params":{"source":"/nonexistent.mp4"}}`},
 		{"mediapipe_worker.py", `{"version":1,"op":"speakers","params":{"source":"/nonexistent.mp4"}}`},
 		{"index_worker.py", `{"version":1,"op":"index","params":{"transcript":"/nonexistent.json","table":"/tmp/x.lance"}}`},
