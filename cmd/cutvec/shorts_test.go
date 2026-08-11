@@ -64,6 +64,105 @@ func TestBuildSRTLeadsWithTheHook(t *testing.T) {
 	if !strings.HasPrefix(srt, "1\n00:00:00,000") || !strings.Contains(srt, "WHY DOES THIS MATTER?") {
 		t.Fatalf("hook is not the opening cue:\n%s", srt)
 	}
+	// The hook must stand alone: no later cue may begin before it ends.
+	assertNoCueOverlap(t, srt)
+}
+
+// The opening retention window is exactly when the hook is meant to stand alone,
+// yet shorts are cut to begin on speech — so the first word routinely starts
+// inside the hook's 2.5s. buildSRT must push that caption clear rather than
+// stack it under the hook.
+func TestBuildSRTHookDoesNotOverlapFirstCaption(t *testing.T) {
+	tr := project.Transcript{Words: []project.Word{
+		// Speech begins at clip zero, well inside the 2.5s hook card.
+		{Word: "alpha", Start: 0, End: 0.4},
+		{Word: "beta", Start: 0.4, End: 0.8},
+		{Word: "gamma", Start: 0.8, End: 1.2},
+		{Word: "delta", Start: 1.5, End: 2.0},
+		{Word: "epsilon", Start: 3.0, End: 3.5},
+	}}
+	srt := buildSRT(tr, 0, 10, "Watch this")
+
+	cues := parseCueSpans(t, srt)
+	if len(cues) < 2 {
+		t.Fatalf("expected a hook cue plus caption cues, got %d:\n%s", len(cues), srt)
+	}
+	// Cue #1 is the hook, occupying the opening card.
+	if cues[0].start != 0 {
+		t.Fatalf("hook cue does not open at zero: %v\n%s", cues[0], srt)
+	}
+	// Every caption cue must begin at or after the hook ends.
+	for _, c := range cues[1:] {
+		if c.start < cues[0].end {
+			t.Fatalf("caption cue %v begins before the hook ends at %.3fs:\n%s", c, cues[0].end, srt)
+		}
+	}
+	assertNoCueOverlap(t, srt)
+}
+
+// Without a hook the same non-overlap guarantee must hold across caption cues.
+func TestBuildSRTCuesNeverOverlapWithoutHook(t *testing.T) {
+	tr := project.Transcript{Words: []project.Word{
+		{Word: "one", Start: 10, End: 10.3},
+		{Word: "two", Start: 10.3, End: 10.6},
+		{Word: "three", Start: 10.6, End: 10.9},
+		{Word: "four", Start: 10.9, End: 11.2},
+	}}
+	srt := buildSRT(tr, 10, 12, "")
+	assertNoCueOverlap(t, srt)
+}
+
+type cueSpan struct {
+	start, end float64
+}
+
+// parseCueSpans reads the "HH:MM:SS,mmm --> HH:MM:SS,mmm" timing line of every
+// SRT cue in order, so a test can compare consecutive spans directly.
+func parseCueSpans(t *testing.T, srt string) []cueSpan {
+	t.Helper()
+	var spans []cueSpan
+	for _, line := range strings.Split(srt, "\n") {
+		if !strings.Contains(line, "-->") {
+			continue
+		}
+		parts := strings.SplitN(line, "-->", 2)
+		spans = append(spans, cueSpan{
+			start: parseSRTStamp(t, strings.TrimSpace(parts[0])),
+			end:   parseSRTStamp(t, strings.TrimSpace(parts[1])),
+		})
+	}
+	return spans
+}
+
+func parseSRTStamp(t *testing.T, s string) float64 {
+	t.Helper()
+	// HH:MM:SS,mmm
+	clock, ms, ok := strings.Cut(s, ",")
+	if !ok {
+		t.Fatalf("malformed SRT stamp %q", s)
+	}
+	hms := strings.Split(clock, ":")
+	if len(hms) != 3 {
+		t.Fatalf("malformed SRT stamp %q", s)
+	}
+	h, _ := strconv.Atoi(hms[0])
+	m, _ := strconv.Atoi(hms[1])
+	sec, _ := strconv.Atoi(hms[2])
+	milli, _ := strconv.Atoi(ms)
+	return float64(h)*3600 + float64(m)*60 + float64(sec) + float64(milli)/1000
+}
+
+// assertNoCueOverlap fails if any cue begins before the previous one ends, the
+// core promise: at most one cue is on screen at a time.
+func assertNoCueOverlap(t *testing.T, srt string) {
+	t.Helper()
+	spans := parseCueSpans(t, srt)
+	for i := 1; i < len(spans); i++ {
+		if spans[i].start < spans[i-1].end {
+			t.Fatalf("cue %d [%.3f,%.3f) overlaps cue %d [%.3f,%.3f):\n%s",
+				i, spans[i].start, spans[i].end, i-1, spans[i-1].start, spans[i-1].end, srt)
+		}
+	}
 }
 
 // The composed timeline is what melt renders, so its shape is the contract:

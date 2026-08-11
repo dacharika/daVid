@@ -32,6 +32,14 @@ const (
 	// few enough to stay in sync with speech.
 	captionWords = 3
 
+	// hookSeconds is how long the hook card holds the frame alone before any
+	// caption may appear, so the opening retention window stays uncluttered.
+	hookSeconds = 2.5
+	// minCaptionShow keeps a caption that had to be pushed clear of an earlier
+	// cue on screen long enough to read, rather than collapsing to a zero-length
+	// flash when its own span already elapsed under the hook.
+	minCaptionShow = 0.5
+
 	// headShouldersHeightKeep is the fraction of the source height the vertical
 	// crop window spans. Less than the full height zooms in past a full-body
 	// two-shot to a head-and-shoulders framing — the difference between a clip
@@ -507,10 +515,17 @@ func speakerAt(s project.Speakers, start, end float64) string {
 func buildSRT(t project.Transcript, start, end float64, hook string) string {
 	var b strings.Builder
 	n := 0
+	// floor is the earliest a cue may begin, in clip-relative seconds. It starts
+	// past the hook card (when present) so the first captions never render
+	// stacked under it, and advances to each cue's end so no two cues overlap —
+	// which they otherwise would whenever the first word is spoken inside the
+	// opening 2.5s the hook holds alone.
+	floor := 0.0
 	if hook != "" {
 		n++
 		fmt.Fprintf(&b, "%d\n%s --> %s\n%s\n\n", n,
-			srtTime(0), srtTime(2.5), strings.ToUpper(hook))
+			srtTime(0), srtTime(hookSeconds), strings.ToUpper(hook))
+		floor = hookSeconds
 	}
 	var group []project.Word
 	flush := func() {
@@ -522,8 +537,17 @@ func buildSRT(t project.Transcript, start, end float64, hook string) string {
 		for _, w := range group {
 			words = append(words, w.Word)
 		}
+		cueStart := group[0].Start - start
+		cueEnd := group[len(group)-1].End - start
+		if cueStart < floor {
+			cueStart = floor
+		}
+		if cueEnd < cueStart+minCaptionShow {
+			cueEnd = cueStart + minCaptionShow
+		}
+		floor = cueEnd
 		fmt.Fprintf(&b, "%d\n%s --> %s\n%s\n\n", n,
-			srtTime(group[0].Start-start), srtTime(group[len(group)-1].End-start),
+			srtTime(cueStart), srtTime(cueEnd),
 			strings.ToUpper(joinTokens(words)))
 		group = group[:0]
 	}
