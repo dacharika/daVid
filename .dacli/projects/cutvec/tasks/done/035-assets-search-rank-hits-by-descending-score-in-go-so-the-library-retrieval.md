@@ -34,3 +34,7 @@ assets search (the SFX/b-roll retrieval half of the vector-search capability) re
 - 2026-08-11T08:56:06Z verified by `go build ./... && go test ./...` (exit 0)
 - 2026-08-11T08:56:06Z deliverable: no dacli/035-assets-search-rank-hits-by-descending-score-in-go-so-the-library-retrieval branch — nothing to check against main
 - 2026-08-11T08:56:06Z completed by a-root
+- 2026-08-11T09:46:07Z accepted by a-root
+- 2026-08-11T09:46:07Z verified by `go build ./... && go test ./... -count=1` (exit 0)
+- 2026-08-11T09:46:07Z deliverable: no dacli/035-assets-search-rank-hits-by-descending-score-in-go-so-the-library-retrieval branch — nothing to check against main
+- 2026-08-11T09:46:07Z completed by a-root
