@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"os"
 	"sort"
 	"strings"
 
@@ -193,6 +194,31 @@ func seatCY(s project.Speakers, seat string, fallback float64) float64 {
 // sourceDims reports the source's pixel dimensions for framing math, preferring
 // the ffmpeg probe recorded at ingest and falling back to a landscape default
 // when a source was ingested without a worker and carries no probe.
+// renderSource picks the media a recipe should read, together with the
+// dimensions its crop math must be computed against.
+//
+// The two are returned together on purpose. Crop windows are expressed in
+// source pixels, so pairing the proxy resource with the master's dimensions
+// crops a 960x540 frame using 4K coordinates: melt renders it successfully and
+// the result is framed on nothing. Choosing them at two separate call sites is
+// how that pairing gets broken, so there is one site and it returns both.
+//
+// A draft (`quality: proxy`) reads the proxy when ingest recorded one with real
+// dimensions and the file is still there; anything else reads the master. Final
+// renders always read the master — sourcing a delivery render from a 540p proxy
+// would throw away the resolution the whole pipeline exists to preserve.
+func renderSource(src project.Source, quality string) (resource string, w, h int) {
+	if quality == "proxy" && src.Proxy != "" && src.ProxyWidth > 0 && src.ProxyHeight > 0 {
+		if _, err := os.Stat(src.Proxy); err == nil {
+			return src.Proxy, src.ProxyWidth, src.ProxyHeight
+		}
+		// A recorded handle whose file has since been deleted falls back to the
+		// master rather than failing: the proxy is an optimisation.
+	}
+	mw, mh := sourceDims(src)
+	return src.Path, mw, mh
+}
+
 func sourceDims(src project.Source) (int, int) {
 	if src.Probe != nil && src.Probe.Width > 0 && src.Probe.Height > 0 {
 		return src.Probe.Width, src.Probe.Height
