@@ -182,7 +182,9 @@ func shortsCmd(args []string, stdin io.Reader, stdout io.Writer) error {
 	req.RightCentre = seatCentre(speakers, "right", req.RightCentre)
 	// The crop window is measured in source pixels, so it needs the source's real
 	// dimensions — recorded on the source at ingest by the ffmpeg probe.
-	srcW, srcH := sourceDims(src)
+	// Resource and dimensions come from one call so a draft can never pair the
+	// proxy with the master's pixel dimensions.
+	media, srcW, srcH := renderSource(src, req.Quality)
 
 	// 1. Find the moments worth cutting.
 	sw, err := resolveSearchWorker(searchRequest{
@@ -249,7 +251,7 @@ func shortsCmd(args []string, stdin io.Reader, stdout io.Writer) error {
 			cx = req.LeftCentre
 		}
 		cy := seatCY(speakers, who, faceY)
-		tl := buildShortTimeline(src.Path, start, end, cx, cy, srcW, srcH, srt)
+		tl := buildShortTimeline(media, start, end, cx, cy, srcW, srcH, srt)
 		if problems := tl.Validate(); len(problems) > 0 {
 			return axerror.New("timeline.invalid",
 				"composed timeline is not renderable: "+strings.Join(problems, "; ")).

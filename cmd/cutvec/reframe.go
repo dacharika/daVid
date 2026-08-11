@@ -135,6 +135,9 @@ func reframeCmd(args []string, stdin io.Reader, stdout io.Writer) error {
 
 	shots := planShots(speakers, duration, req.MinShot)
 	profile := timeline.Landscape(30)
+	// PunchIn works in profile space (use_profile=1), so reframe's crop is
+	// resolution-independent and only the resource changes for a draft.
+	media, _, _ := renderSource(src, req.Quality)
 	tl := timeline.New()
 	tl.Profile = profile
 	for i, s := range shots {
@@ -147,7 +150,7 @@ func reframeCmd(args []string, stdin io.Reader, stdout io.Writer) error {
 		}
 		tl.Producers = append(tl.Producers, timeline.Producer{
 			ID:       fmt.Sprintf("shot%d", i),
-			Resource: src.Path,
+			Resource: media,
 			In:       timeline.Clock(s.Start),
 			Out:      timeline.Clock(s.End),
 			Filters:  []timeline.Filter{timeline.PunchIn(profile, keep, cx, faceY)},

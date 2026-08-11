@@ -68,6 +68,28 @@ def require_source(params: dict, what: str) -> str:
     return source
 
 
+def video_size(path: Path) -> tuple[int, int]:
+    """Measure a file's video dimensions with ffprobe."""
+    ffprobe = require_tool("ffprobe", "brew install ffmpeg (provides ffprobe)")
+    proc = run_tool(
+        [
+            ffprobe,
+            "-v",
+            "error",
+            "-select_streams",
+            "v:0",
+            "-show_entries",
+            "stream=width,height",
+            "-of",
+            "json",
+            str(path),
+        ],
+        "ffprobe size",
+    )
+    streams = json.loads(proc.stdout or "{}").get("streams") or [{}]
+    return int(streams[0].get("width") or 0), int(streams[0].get("height") or 0)
+
+
 def publish(tmp: Path, dest: Path, what: str) -> dict:
     """Move a finished render onto its final path and report the handle.
 
@@ -138,7 +160,16 @@ def handle_proxy(params: dict) -> dict:
         ],
         "ffmpeg proxy",
     )
-    return publish(tmp, dest, "proxy")
+    res = publish(tmp, dest, "proxy")
+    # Report the dimensions actually produced rather than the ones requested.
+    # A crop computed against assumed proxy dimensions but applied to real ones
+    # renders successfully and frames nothing, so the caller needs the truth:
+    # -2 rounds the width to keep it even, and the height is only honoured when
+    # the source is taller than it.
+    w, h = video_size(dest)
+    res["width"], res["height"] = w, h
+    log(f"proxy is {w}x{h}")
+    return res
 
 
 def handle_audio(params: dict) -> dict:

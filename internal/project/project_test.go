@@ -92,10 +92,10 @@ type countingDeriver struct {
 	proxyDest, audioDest   string
 }
 
-func (c *countingDeriver) Proxy(_, dest string) error {
+func (c *countingDeriver) Proxy(_, dest string) (int, int, error) {
 	c.proxyCalls++
 	c.proxyDest = dest
-	return os.WriteFile(dest, []byte("proxy bytes"), 0o644)
+	return 960, 540, os.WriteFile(dest, []byte("proxy bytes"), 0o644)
 }
 
 func (c *countingDeriver) Audio(_, dest string) error {
@@ -132,6 +132,13 @@ func TestIngestDerivesProxyAndAudioOnceAndCaches(t *testing.T) {
 	}
 	if want := p.AudioPath(first.Source.Hash); first.Source.Audio != want {
 		t.Errorf("audio handle = %q, want %q", first.Source.Audio, want)
+	}
+	// The proxy's own dimensions must be recorded, not inferred: a renderer that
+	// reads the proxy computes its crops against these, and a zero here is what
+	// makes it fall back to the master rather than crop against nothing.
+	if first.Source.ProxyWidth != 960 || first.Source.ProxyHeight != 540 {
+		t.Errorf("proxy dims = %dx%d, want 960x540 as the deriver reported",
+			first.Source.ProxyWidth, first.Source.ProxyHeight)
 	}
 	// A handle that points at nothing is worse than no handle at all.
 	for _, h := range []string{first.Source.Proxy, first.Source.Audio} {

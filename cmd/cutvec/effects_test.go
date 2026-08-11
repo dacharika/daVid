@@ -2,6 +2,8 @@ package main
 
 import (
 	"errors"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
@@ -471,4 +473,59 @@ func TestSpeakerCoverageRoundTripsThroughTheCache(t *testing.T) {
 	if seat, ok := got.Seats["left"]; !ok || seat.CX != 0.3 {
 		t.Fatalf("seats = %+v, want the written left seat", got.Seats)
 	}
+}
+
+// renderSource returns the media to read and the dimensions to crop against as
+// one answer, because separating them is the failure this guards. Crop windows
+// are source-pixel rectangles: the proxy resource paired with the master's
+// dimensions crops a 960x540 frame using 4K coordinates, which melt renders
+// successfully and which frames nothing. Every case below therefore asserts the
+// PAIR, never one half.
+func TestRenderSourcePairsMediaWithItsOwnDimensions(t *testing.T) {
+	dir := t.TempDir()
+	proxy := filepath.Join(dir, "proxy.mp4")
+	if err := os.WriteFile(proxy, []byte("proxy"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	full := project.Source{
+		Path:  "/master.mp4",
+		Probe: &project.Probe{Width: 3840, Height: 2160},
+		Proxy: proxy, ProxyWidth: 960, ProxyHeight: 540,
+	}
+
+	t.Run("draft reads the proxy at the proxy's dimensions", func(t *testing.T) {
+		res, w, h := renderSource(full, "proxy")
+		if res != proxy || w != 960 || h != 540 {
+			t.Fatalf("got %q %dx%d, want the proxy at 960x540", res, w, h)
+		}
+	})
+
+	t.Run("final always reads the master", func(t *testing.T) {
+		// Sourcing a delivery render from a 540p proxy would throw away the
+		// resolution the whole pipeline exists to preserve.
+		res, w, h := renderSource(full, "final")
+		if res != full.Path || w != 3840 || h != 2160 {
+			t.Fatalf("got %q %dx%d, want the master at 3840x2160", res, w, h)
+		}
+	})
+
+	t.Run("a deleted proxy falls back to the master, dimensions included", func(t *testing.T) {
+		gone := full
+		gone.Proxy = filepath.Join(dir, "not-there.mp4")
+		res, w, h := renderSource(gone, "proxy")
+		if res != gone.Path || w != 3840 || h != 2160 {
+			t.Fatalf("got %q %dx%d, want the master — a missing proxy must not crop against proxy dims", res, w, h)
+		}
+	})
+
+	t.Run("a proxy with no recorded dimensions is not used", func(t *testing.T) {
+		// Zero dims mean the worker never reported them. Cropping against 0x0,
+		// or guessing a scale rule, is worse than simply reading the master.
+		undim := full
+		undim.ProxyWidth, undim.ProxyHeight = 0, 0
+		res, w, h := renderSource(undim, "proxy")
+		if res != undim.Path || w != 3840 || h != 2160 {
+			t.Fatalf("got %q %dx%d, want the master when proxy dims are unknown", res, w, h)
+		}
+	})
 }

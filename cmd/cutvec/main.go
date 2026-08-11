@@ -469,12 +469,20 @@ type ffmpegDeriver struct {
 
 // Proxy builds the small, fast-seeking copy the expensive steps read instead of
 // the master.
-func (fd ffmpegDeriver) Proxy(src, dest string) error {
-	_, err := fd.w.Invoke(context.Background(), worker.Request{
+func (fd ffmpegDeriver) Proxy(src, dest string) (int, int, error) {
+	resp, err := fd.w.Invoke(context.Background(), worker.Request{
 		Op:     "proxy",
 		Params: map[string]any{"source": src, "dest": dest},
 	})
-	return err // already an *axerror.Error from the worker boundary
+	if err != nil {
+		return 0, 0, err // already an *axerror.Error from the worker boundary
+	}
+	// Dimensions are what the worker actually wrote. A worker that does not
+	// report them yields zeroes, which downstream reads as "unknown" and falls
+	// back to the master — better than guessing at a scale rule.
+	w, _ := resp.Result["width"].(float64)
+	h, _ := resp.Result["height"].(float64)
+	return int(w), int(h), nil
 }
 
 // Audio extracts the source's audio track on its own.

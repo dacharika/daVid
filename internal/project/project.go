@@ -90,6 +90,12 @@ type Source struct {
 	// master. Empty when ingest ran with no Deriver configured, or on a source
 	// recorded before derivation existed.
 	Proxy string `json:"proxy,omitempty"`
+	// ProxyWidth and ProxyHeight are the proxy's own pixel dimensions. A step
+	// that renders from the proxy must compute its crop windows against these,
+	// never against Probe — those describe the master, and a 4K rectangle
+	// applied to a 540p frame renders green and frames nothing.
+	ProxyWidth  int `json:"proxyWidth,omitempty"`
+	ProxyHeight int `json:"proxyHeight,omitempty"`
 	// Audio is a handle to the source's audio track on its own, extracted once at
 	// ingest — transcription wants samples, not pixels. Empty under the same
 	// conditions as Proxy.
@@ -129,7 +135,11 @@ type Prober interface {
 // which is what keeps internal/project free of any worker import: the ffmpeg
 // boundary lives in the caller, exactly as it does for Prober.
 type Deriver interface {
-	Proxy(src, dest string) error
+	// Proxy returns the dimensions the proxy was actually written at, not the
+	// ones asked for. A crop computed against assumed proxy dimensions but
+	// applied to the real ones renders successfully and frames nothing, so this
+	// is measured rather than derived.
+	Proxy(src, dest string) (int, int, error)
 	Audio(src, dest string) error
 }
 
@@ -294,10 +304,12 @@ func (p Project) Ingest(path string, prober Prober, deriver Deriver) (IngestResu
 			return IngestResult{}, err
 		}
 		proxy := p.ProxyPath(src.Hash)
-		if err := deriver.Proxy(path, proxy); err != nil {
+		pw, ph, err := deriver.Proxy(path, proxy)
+		if err != nil {
 			return IngestResult{}, err
 		}
 		src.Proxy = proxy
+		src.ProxyWidth, src.ProxyHeight = pw, ph
 
 		audio := p.AudioPath(src.Hash)
 		if err := deriver.Audio(path, audio); err != nil {
