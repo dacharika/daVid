@@ -480,3 +480,172 @@ func TestRankCandidatesDeterministicOrder(t *testing.T) {
 		}
 	}
 }
+
+// The fingerprint shortcut exists to skip re-reading every byte of a large
+// source, but it must never hand back a hash that does not match the file. The
+// full sha256 stays the identity; the fingerprint only answers "same bytes as
+// last time?". These cases pin both halves: the shortcut is used, and it is
+// never used when the bytes changed.
+func TestDescribeSourceFingerprintShortcut(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "proj")
+	p := Open(dir)
+	if _, _, err := p.Init(""); err != nil {
+		t.Fatal(err)
+	}
+	src := writeSource(t, "the original bytes")
+
+	// Ingest records the mapping; DescribeSource only consumes it. Recording in
+	// DescribeSource would give --plan, which is built on it, a side effect.
+	ing, err := p.Ingest(src, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	first := ing.Source
+	// A second call must agree, and must agree with a from-scratch hash.
+	second, err := p.DescribeSource(src)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if second.Hash != first.Hash {
+		t.Fatalf("shortcut changed the hash: %q vs %q", second.Hash, first.Hash)
+	}
+	direct, err := HashFile(src)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first.Hash != direct {
+		t.Fatalf("recorded hash %q != HashFile %q", first.Hash, direct)
+	}
+
+	// Rewriting the file must produce a different hash. This is the case that
+	// matters: a shortcut that survived a content change would key every later
+	// step — transcript, index, speakers, renders — to the wrong source.
+	if err := os.WriteFile(src, []byte("completely different bytes"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	changed, err := p.DescribeSource(src)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if changed.Hash == first.Hash {
+		t.Fatal("a rewritten file kept its old hash — the fingerprint outlived the content")
+	}
+	if want, _ := HashFile(src); changed.Hash != want {
+		t.Fatalf("hash after rewrite = %q, want %q", changed.Hash, want)
+	}
+}
+
+// ForgetFingerprint is the escape hatch behind `ingest --rehash`: after it, the
+// next describe reads every byte again rather than trusting the record.
+func TestForgetFingerprintForcesAFullRehash(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "proj")
+	p := Open(dir)
+	if _, _, err := p.Init(""); err != nil {
+		t.Fatal(err)
+	}
+	src := writeSource(t, "bytes")
+	ing, err := p.Ingest(src, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := ing.Source
+	// The mapping is on disk after the ingest.
+	if entries, _ := filepath.Glob(filepath.Join(p.CacheDir(), "fp-*.txt")); len(entries) != 1 {
+		t.Fatalf("expected exactly one fingerprint entry, got %d", len(entries))
+	}
+	if err := p.ForgetFingerprint(src); err != nil {
+		t.Fatalf("ForgetFingerprint: %v", err)
+	}
+	if entries, _ := filepath.Glob(filepath.Join(p.CacheDir(), "fp-*.txt")); len(entries) != 0 {
+		t.Fatalf("fingerprint survived ForgetFingerprint: %v", entries)
+	}
+	// Forgetting must not change the answer, only the work done to reach it.
+	again, err := p.DescribeSource(src)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if again.Hash != got.Hash {
+		t.Fatalf("hash changed after a forced rehash: %q vs %q", again.Hash, got.Hash)
+	}
+	// Forgetting something never recorded is success, not an error.
+	if err := p.ForgetFingerprint(src); err != nil {
+		t.Fatalf("second ForgetFingerprint: %v", err)
+	}
+}
+
+// The adversarial case for any cheap fingerprint: content replaced with the
+// SAME byte count and the mtime forced back, so size and mtime both agree. Only
+// the head/tail read can tell these apart, which is why the fingerprint hashes
+// content at all rather than stat()ing and hoping.
+func TestFingerprintCatchesSameSizeSameMtimeRewrite(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "proj")
+	p := Open(dir)
+	if _, _, err := p.Init(""); err != nil {
+		t.Fatal(err)
+	}
+	src := writeSource(t, "AAAAAAAAAAAAAAAA")
+	st, err := os.Stat(src)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ing, err := p.Ingest(src, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	first := ing.Source
+
+	// Same length, different bytes, and the clock wound back to match.
+	if err := os.WriteFile(src, []byte("BBBBBBBBBBBBBBBB"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chtimes(src, st.ModTime(), st.ModTime()); err != nil {
+		t.Fatal(err)
+	}
+	now, err := os.Stat(src)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if now.Size() != st.Size() || !now.ModTime().Equal(st.ModTime()) {
+		t.Fatalf("setup failed to match size+mtime: %d/%v vs %d/%v",
+			now.Size(), now.ModTime(), st.Size(), st.ModTime())
+	}
+
+	changed, err := p.DescribeSource(src)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if changed.Hash == first.Hash {
+		t.Fatal("same-size same-mtime rewrite kept the old hash — the fingerprint is not reading content")
+	}
+	if want, _ := HashFile(src); changed.Hash != want {
+		t.Fatalf("hash = %q, want %q", changed.Hash, want)
+	}
+}
+
+// DescribeSource backs --plan, so it must not touch the filesystem. An earlier
+// version of the fingerprint shortcut recorded its mapping here, which created
+// the cache directory and turned every dry run into a write. CI caught it; this
+// pins it so it cannot come back.
+func TestDescribeSourceWritesNothing(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "proj")
+	p := Open(dir)
+	if _, _, err := p.Init(""); err != nil {
+		t.Fatal(err)
+	}
+	src := writeSource(t, "some bytes")
+
+	if _, err := p.DescribeSource(src); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(p.CacheDir()); !os.IsNotExist(err) {
+		t.Fatalf("DescribeSource created the cache dir (stat err = %v) — --plan is built on it", err)
+	}
+	// Repeating it still writes nothing, even though the first call had to hash
+	// in full and "knows" something worth recording.
+	if _, err := p.DescribeSource(src); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(p.CacheDir()); !os.IsNotExist(err) {
+		t.Fatalf("a second DescribeSource created the cache dir (stat err = %v)", err)
+	}
+}
