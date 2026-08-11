@@ -357,6 +357,47 @@ func CropWindow(srcW, srcH, x, y, w, h int) Filter {
 	)
 }
 
+// PushZoom slowly magnifies the frame across a clip — the "push" that keeps a
+// static talking-head shot from feeling like a still. It is applied AFTER the
+// crop, so it works on the already-framed picture in profile coordinates.
+//
+// push is how much bigger the picture gets by the end (0.12 = 12% in), and
+// lastFrame is the clip's final frame index, because MLT keyframes are frames.
+// The magnification is centred, so the subject stays where the crop put it.
+//
+// It uses qtblend rather than animating the crop, which matters and cost a
+// wrong turn to learn: MLT marks animatable parameters in its own metadata
+// (`melt -query filter=X`), and neither `crop` nor `affine` marks any. Handing
+// crop a keyframe string does not fail — it is IGNORED, and the filter then
+// applies no crop at all, so the render succeeds and emits the uncropped frame
+// letterboxed into the target aspect. qtblend is the one of the three that
+// marks `rect` animatable, and it is the one that works.
+//
+// Returns false when there is nothing to do, so a caller can omit the filter
+// entirely and leave a locked shot byte-identical to what it was before.
+func PushZoom(p *Profile, push float64, lastFrame int) (Filter, bool) {
+	if p == nil {
+		p = Vertical(30)
+	}
+	if push <= 0 || lastFrame <= 0 {
+		return Filter{}, false
+	}
+	if push > 0.5 {
+		// Past half again the subject fills the frame entirely; clamp rather
+		// than let a fat-fingered value magnify into abstraction.
+		push = 0.5
+	}
+	w, h := float64(p.Width), float64(p.Height)
+	endW, endH := w*(1+push), h*(1+push)
+	// Negative offsets keep the enlarged picture centred on the same point.
+	endX, endY := -(endW-w)/2, -(endH-h)/2
+
+	return NewFilter("qtblend", "rect", fmt.Sprintf(
+		"0=0 0 %.0f %.0f 1; %d=%.0f %.0f %.0f %.0f 1",
+		w, h, lastFrame, endX, endY, endW, endH,
+	)), true
+}
+
 // Landscape returns the 16:9 profile a horizontal edit is delivered in.
 func Landscape(fps int) *Profile {
 	if fps <= 0 {
