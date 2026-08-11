@@ -112,3 +112,15 @@ a missing tool, model or package is reported before a pipeline spends minutes fa
 - 2026-08-10T21:46:46Z verified by `go build ./... && go test ./...` (exit 0)
 - 2026-08-10T21:46:46Z deliverable: no dacli/024-doctor-preflight-the-whole-environment-in-one-call branch — nothing to check against main
 - 2026-08-10T21:46:46Z completed by a-root
+- 2026-08-11T05:04:28Z accepted by a-root
+- 2026-08-11T05:04:28Z verified by `go build ./... && go test ./...` (exit 0)
+- 2026-08-11T05:04:28Z deliverable: no dacli/024-doctor-preflight-the-whole-environment-in-one-call branch — nothing to check against main
+- 2026-08-11T05:04:28Z completed by a-root
+- 2026-08-11T07:55:30Z accepted by a-root
+- 2026-08-11T07:55:30Z verified by `go build ./... && go test ./...` (exit 0)
+- 2026-08-11T07:55:30Z deliverable: no dacli/024-doctor-preflight-the-whole-environment-in-one-call branch — nothing to check against main
+- 2026-08-11T07:55:30Z completed by a-root
+- 2026-08-11T08:56:03Z accepted by a-root
+- 2026-08-11T08:56:03Z verified by `go build ./... && go test ./...` (exit 0)
+- 2026-08-11T08:56:03Z deliverable: no dacli/024-doctor-preflight-the-whole-environment-in-one-call branch — nothing to check against main
+- 2026-08-11T08:56:03Z completed by a-root

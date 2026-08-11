@@ -1,2 +1,0 @@
-window_tokens: 0
-pending_land: dacli/034-shorts-rank-moments-with-rankcandidates-before-selecting-so-the-recipe-is

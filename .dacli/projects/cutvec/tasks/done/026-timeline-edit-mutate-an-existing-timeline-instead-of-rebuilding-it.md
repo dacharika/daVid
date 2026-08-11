@@ -104,3 +104,15 @@ an agent can adjust one filter on a composed edit without re-running search and 
 - 2026-08-10T21:46:47Z verified by `go build ./... && go test ./...` (exit 0)
 - 2026-08-10T21:46:47Z deliverable: no dacli/026-timeline-edit-mutate-an-existing-timeline-instead-of-rebuilding-it branch — nothing to check against main
 - 2026-08-10T21:46:47Z completed by a-root
+- 2026-08-11T05:04:28Z accepted by a-root
+- 2026-08-11T05:04:28Z verified by `go build ./... && go test ./...` (exit 0)
+- 2026-08-11T05:04:28Z deliverable: no dacli/026-timeline-edit-mutate-an-existing-timeline-instead-of-rebuilding-it branch — nothing to check against main
+- 2026-08-11T05:04:28Z completed by a-root
+- 2026-08-11T08:12:07Z accepted by a-root
+- 2026-08-11T08:12:07Z verified by `go build ./... && go test ./...` (exit 0)
+- 2026-08-11T08:12:07Z deliverable: no dacli/026-timeline-edit-mutate-an-existing-timeline-instead-of-rebuilding-it branch — nothing to check against main
+- 2026-08-11T08:12:07Z completed by a-root
+- 2026-08-11T08:56:04Z accepted by a-root
+- 2026-08-11T08:56:04Z verified by `go build ./... && go test ./...` (exit 0)
+- 2026-08-11T08:56:04Z deliverable: no dacli/026-timeline-edit-mutate-an-existing-timeline-instead-of-rebuilding-it branch — nothing to check against main
+- 2026-08-11T08:56:04Z completed by a-root

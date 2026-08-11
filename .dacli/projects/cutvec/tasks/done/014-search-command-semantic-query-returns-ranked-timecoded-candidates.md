@@ -122,3 +122,15 @@ an agent asks for a moment by meaning and gets timecodes + scores
 - 2026-08-10T21:46:45Z verified by `go build ./... && go test ./...` (exit 0)
 - 2026-08-10T21:46:45Z deliverable: no dacli/014-search-command-semantic-query-returns-ranked-timecoded-candidates branch — nothing to check against main
 - 2026-08-10T21:46:45Z completed by a-root
+- 2026-08-11T04:48:46Z accepted by a-root
+- 2026-08-11T04:48:46Z verified by `go build ./... && go test ./...` (exit 0)
+- 2026-08-11T04:48:46Z deliverable: no dacli/014-search-command-semantic-query-returns-ranked-timecoded-candidates branch — nothing to check against main
+- 2026-08-11T04:48:46Z completed by a-root
+- 2026-08-11T07:55:29Z accepted by a-root
+- 2026-08-11T07:55:29Z verified by `go build ./... && go test ./...` (exit 0)
+- 2026-08-11T07:55:29Z deliverable: no dacli/014-search-command-semantic-query-returns-ranked-timecoded-candidates branch — nothing to check against main
+- 2026-08-11T07:55:29Z completed by a-root
+- 2026-08-11T08:56:02Z accepted by a-root
+- 2026-08-11T08:56:02Z verified by `go build ./... && go test ./...` (exit 0)
+- 2026-08-11T08:56:02Z deliverable: no dacli/014-search-command-semantic-query-returns-ranked-timecoded-candidates branch — nothing to check against main
+- 2026-08-11T08:56:02Z completed by a-root
