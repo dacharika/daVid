@@ -36,11 +36,11 @@ and break both recipes; a test merge conflicts in all five files it touches.
 So what remains is **additive on current main** and does not need #7's rework.
 
 ## Acceptance
-- [ ] `workers/ffmpeg_worker.py` gains two ops alongside the existing probe — one building a proxy (small, fast-seeking, same duration) and one extracting the audio track — each answering the versioned JSON contract and returning a structured error, not a traceback, when ffmpeg is absent (the `TestWorkerContract` gate in CI must still pass)
-- [ ] `project.Source` gains `Proxy` and `Audio` string handles, `omitempty`, alongside the existing typed `Probe` — which is NOT changed to a map
-- [ ] `ingest` builds both on a content-hash cache **miss** only, and a re-ingest of unchanged bytes stays a pure cache hit that runs no worker (the existing `cached:true` behaviour is unchanged); a missing ffmpeg worker skips them the way probing already skips, rather than failing the ingest
-- [ ] the catalog's `ingest` output schema documents both handles, so `cutvec schema ingest` and the MCP `tools/list` stop under-reporting the real output
-- [ ] a Go test drives ingest with the re-exec'd fake worker and asserts both handles come back and that a second ingest returns them from cache with no worker invocation; `go build ./...` and `go test ./... -count=1` exit 0 and every changed file is gofmt-clean
+- [x] `workers/ffmpeg_worker.py` gains two ops alongside the existing probe — one building a proxy (small, fast-seeking, same duration) and one extracting the audio track — each answering the versioned JSON contract and returning a structured error, not a traceback, when ffmpeg is absent (the `TestWorkerContract` gate in CI must still pass)
+- [x] `project.Source` gains `Proxy` and `Audio` string handles, `omitempty`, alongside the existing typed `Probe` — which is NOT changed to a map
+- [x] `ingest` builds both on a content-hash cache **miss** only, and a re-ingest of unchanged bytes stays a pure cache hit that runs no worker (the existing `cached:true` behaviour is unchanged); a missing ffmpeg worker skips them the way probing already skips, rather than failing the ingest
+- [x] the catalog's `ingest` output schema documents both handles, so `cutvec schema ingest` and the MCP `tools/list` stop under-reporting the real output
+- [x] a Go test drives ingest with the re-exec'd fake worker and asserts both handles come back and that a second ingest returns them from cache with no worker invocation; `go build ./...` and `go test ./... -count=1` exit 0 and every changed file is gofmt-clean
 
 ## Notes
 Scope deliberately excludes making any downstream step *use* the proxy —
@@ -50,3 +50,7 @@ hide a behaviour change inside an additive one.
 
 ## Log
 - 2026-08-11 filed by a-root after finding task 010's checked acceptance box unmet on main; PRs #7 (stale Probe rework) closed as superseded with the reasoning recorded there
+- 2026-08-11T11:16:38Z accepted by a-root
+- 2026-08-11T11:16:38Z verified by `go build ./... && go test ./... -count=1` (exit 0)
+- 2026-08-11T11:16:38Z deliverable: no dacli/039-ingest-build-the-proxy-and-audio-handles-task-010-was-closed-against-but-never branch — nothing to check against main
+- 2026-08-11T11:16:38Z completed by a-root

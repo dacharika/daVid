@@ -37,7 +37,9 @@ echo '{"project":"proj","name":"podcast"}' | ./build/cutvec init
 # → {"project":"proj","manifest":"proj/project.json","name":"podcast","created":true}
 
 echo '{"project":"proj","source":"raw.mp4"}' | ./build/cutvec ingest
-# → {"source":{"id":"8b1faca47fef","path":"raw.mp4","hash":"8b1f…"},"cached":false}
+# → {"source":{"id":"8b1faca47fef","path":"raw.mp4","hash":"8b1f…",
+#              "probe":{"width":3840,"height":2160,"duration":20.03,"fps":59.94},
+#              "proxy":"proj/cache/proxy-8b1f….mp4","audio":"proj/cache/audio-8b1f….wav"}}
 echo '{"project":"proj","source":"raw.mp4"}' | ./build/cutvec ingest   # re-run
 # → {"source":{…},"cached":true}   ← content-hash cache hit; nothing re-recorded
 
@@ -48,7 +50,13 @@ echo '{"project":"proj"}' | ./build/cutvec status --json
 `init` is idempotent (re-running returns `created:false`, never clobbering).
 `ingest` keys each source on the sha256 of its bytes: re-ingesting an unchanged
 file is a **cache hit** (`cached:true`) that records nothing — the step is
-deterministic, idempotent, and resumable. `status` returns the state graph — the
+deterministic, idempotent, and resumable. On the miss it also measures the
+source and builds its derived media through the ffmpeg worker: a small
+fast-seeking **proxy** so later steps never re-read a 4K master, and the **audio
+track** on its own for transcription. Both are handles keyed on the content
+hash, so the cache hit returns them without rebuilding — on a 379 MB 4K clip
+that is 6.7s the first time and 0.16s every time after. With no ffmpeg worker
+configured the source is still recorded, just without probe or handles. `status` returns the state graph — the
 sources ingested and each artifact marked `done`/`pending` — so an agent decides
 what to run next from one JSON read. Every mutating tool takes `--plan`.
 
