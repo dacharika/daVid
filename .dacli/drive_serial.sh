@@ -68,4 +68,6 @@ done
 echo "===== FINAL ====="; dacli status 2>&1 | head -1
 go build ./... 2>&1 && echo BUILD_OK || echo BUILD_FAIL
 go test ./... 2>&1 | tail -6
-go run ./cmd/cutvec describe 2>&1 | grep -oE '"name": "[a-z]+"' | sort -u | tr '\n' ' '; echo
+# [a-z-]+ not [a-z]+: the hyphen in `reframe-edit` made this silently report 14
+# tools instead of 15, which reads as a missing tool rather than a bad regex.
+go run ./cmd/cutvec describe 2>&1 | grep -oE '"name": "[a-z-]+"' | sort -u | tr '\n' ' '; echo
