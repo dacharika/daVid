@@ -22,3 +22,7 @@ assets search (the SFX/b-roll retrieval half of the vector-search capability) re
 - 2026-08-10T22:32:26Z closed WITHOUT verification — no --verify command was given
 - 2026-08-10T22:32:26Z deliverable: dacli/035-assets-search-rank-hits-by-descending-score-in-go-so-the-library-retrieval is merged into main
 - 2026-08-10T22:32:26Z completed by a-root
+- 2026-08-11T05:04:31Z accepted by a-root
+- 2026-08-11T05:04:31Z verified by `go build ./... && go test ./...` (exit 0)
+- 2026-08-11T05:04:31Z deliverable: no dacli/035-assets-search-rank-hits-by-descending-score-in-go-so-the-library-retrieval branch — nothing to check against main
+- 2026-08-11T05:04:31Z completed by a-root
