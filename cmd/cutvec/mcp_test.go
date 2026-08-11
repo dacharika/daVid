@@ -126,6 +126,42 @@ func TestMCPToolFailureCarriesTheStructuredError(t *testing.T) {
 	}
 }
 
+// `assets` takes its subcommand positionally on the CLI, which MCP has no way to
+// express — so without explicit routing the tool is advertised in tools/list and
+// then fails every tools/call with input.empty "no assets subcommand given",
+// before any worker runs. The whole library-retrieval surface is silently
+// unreachable while appearing available. Both ops must get past that guard and
+// fail (if at all) on their own inputs instead.
+func TestMCPAssetsOpReachesItsSubcommand(t *testing.T) {
+	for _, tc := range []struct {
+		op string
+		// The error each op should reach once routing works — proof it got past
+		// the dispatch guard and into its own handler.
+		wantCode string
+	}{
+		{"search", "input.empty"},  // routed, then: no query given
+		{"index", "input.invalid"}, // routed, then: no directory given
+	} {
+		got := serveMCP(t, `{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"assets","arguments":{"op":"`+tc.op+`","project":"/nonexistent-project"}}}`)
+		res, _ := got[0]["result"].(map[string]any)
+		if res == nil {
+			t.Fatalf("op=%s produced no result: %v", tc.op, got[0])
+		}
+		text := res["content"].([]any)[0].(map[string]any)["text"].(string)
+		if strings.Contains(text, "no assets subcommand given") {
+			t.Errorf("op=%s never reached its subcommand — callTool did not route it: %s", tc.op, text)
+			continue
+		}
+		var ae struct {
+			Code string `json:"code"`
+		}
+		_ = json.Unmarshal([]byte(text), &ae)
+		if ae.Code != tc.wantCode {
+			t.Errorf("op=%s reached code %q, want %q (%s)", tc.op, ae.Code, tc.wantCode, text)
+		}
+	}
+}
+
 // Calling something that does not exist is a protocol-level error, and it names
 // the tools that do exist so an agent can correct itself.
 func TestMCPUnknownToolIsAProtocolErrorListingKnownTools(t *testing.T) {
