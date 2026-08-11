@@ -176,6 +176,9 @@ func TestHelperProcess(t *testing.T) {
 		// path, then report success — exercising the real subprocess round-trip
 		// and the Go side's "did the worker write the file?" verification.
 		outPath, _ := req.Params["output"].(string)
+		if echo := os.Getenv("WORKER_ECHO_FILE"); echo != "" {
+			_ = os.WriteFile(echo, []byte(outPath), 0o644)
+		}
 		if outPath != "" {
 			_ = os.WriteFile(outPath, []byte("fake rendered video"), 0o644)
 		}
@@ -2439,5 +2442,40 @@ func TestUsageIsAccurate(t *testing.T) {
 				t.Errorf("summary for %q starts at column %d, want %d (field too narrow for the longest name)", tool.Name, at, col)
 			}
 		}
+	}
+}
+
+// render publishes atomically by having the worker write "<final>.tmp" and then
+// renaming. That handshake is a real coupling: melt's avformat consumer infers
+// its container from the file extension, and a .tmp tells it nothing — it falls
+// back to mpeg, which rejects aac audio and writes no file at all. The worker
+// compensates by deriving the container from the extension underneath the .tmp.
+//
+// This test pins the Go half of that handshake so the coupling stays visible.
+// The worker half cannot be exercised here (CI has no melt), and it was found
+// only by rendering a real timeline — the fake worker writes whatever path it
+// is handed, so every test passed while `cutvec render` was broken for any
+// timeline with audio.
+func TestRenderAsksTheWorkerForATempPath(t *testing.T) {
+	dir := renderFixture(t)
+	echo := filepath.Join(t.TempDir(), "asked-for.txt")
+	t.Setenv("WORKER_ECHO_FILE", echo)
+	wpath, wargs := renderWorkerEnv(t, "render")
+
+	body, _ := json.Marshal(map[string]any{"worker": wpath, "workerArgs": wargs})
+	var out bytes.Buffer
+	if err := run([]string{"render", dir}, bytes.NewReader(body), &out); err != nil {
+		t.Fatalf("render: %v", err)
+	}
+	asked, err := os.ReadFile(echo)
+	if err != nil {
+		t.Fatalf("worker recorded no output path: %v", err)
+	}
+	if !strings.HasSuffix(string(asked), ".tmp") {
+		t.Fatalf("render asked the worker for %q; the atomic publish expects a .tmp path", asked)
+	}
+	// And the extension the worker needs must survive underneath it.
+	if !strings.Contains(string(asked), ".mp4.tmp") {
+		t.Errorf("temp path %q hides the real container; the worker cannot name a muxer from it", asked)
 	}
 }

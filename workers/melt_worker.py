@@ -118,6 +118,20 @@ def handle_filters(params: dict) -> dict:
     return {"filters": detailed, "count": len(matches), "total": len(everything)}
 
 
+# MLT/ffmpeg muxer names for the extensions this tool writes. Anything else
+# falls back to mp4, which is what every cutvec path actually produces.
+CONTAINERS = {"mp4": "mp4", "mov": "mov", "mkv": "matroska", "webm": "webm"}
+
+
+def container_for(output: str) -> str:
+    """The muxer to name for an output path, ignoring an atomic-publish .tmp."""
+    name = Path(output).name
+    if name.endswith(".tmp"):
+        name = name[: -len(".tmp")]
+    ext = Path(name).suffix.lstrip(".").lower()
+    return CONTAINERS.get(ext, "mp4")
+
+
 def handle_render(params: dict) -> dict:
     timeline = need(params, "timeline")
     output = need(params, "output")
@@ -141,7 +155,16 @@ def handle_render(params: dict) -> dict:
     )
     Path(output).parent.mkdir(parents=True, exist_ok=True)
 
-    argv = [melt, "-progress2", timeline, "-consumer", f"avformat:{output}"] + PROFILES[quality]
+    # Name the container explicitly. The caller publishes atomically by having
+    # melt write "<final>.tmp" and renaming, and avformat cannot infer a format
+    # from a .tmp extension: it silently falls back to mpeg, which then rejects
+    # the aac audio with "Unsupported audio codec" and writes nothing. Deriving
+    # it from the real extension keeps atomic publishing working.
+    argv = (
+        [melt, "-progress2", timeline, "-consumer", f"avformat:{output}"]
+        + PROFILES[quality]
+        + [f"f={container_for(output)}"]
+    )
     log(f"rendering {Path(timeline).name} -> {output} ({quality})")
     run_tool(argv, "melt render")
 
