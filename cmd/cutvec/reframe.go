@@ -34,6 +34,9 @@ type reframeRequest struct {
 	Project string `json:"project"`
 	Source  string `json:"source"`
 	Quality string `json:"quality"`
+	// Dissolve cross-fades between shots over this many seconds. Zero (the
+	// default) is a hard cut, which is what this edit has always produced.
+	Dissolve float64 `json:"dissolve"`
 
 	Keep        float64 `json:"keep"`
 	MinShot     float64 `json:"minShot"`
@@ -134,12 +137,28 @@ func reframeCmd(args []string, stdin io.Reader, stdout io.Writer) error {
 	}
 
 	shots := planShots(speakers, duration, req.MinShot)
+	// A dissolve that outlasts a shot would have three pictures blending at
+	// once, which MLT will happily render as mush. Refuse with a branchable
+	// code naming the shot, rather than producing an edit nobody can explain.
+	if req.Dissolve > 0 {
+		for i, s := range shots {
+			if d := s.End - s.Start; d <= req.Dissolve {
+				return axerror.New("input.invalid", fmt.Sprintf(
+					"dissolve of %.2fs is not shorter than shot %d (%.2fs)", req.Dissolve, i+1, d)).
+					WithHint("use a shorter dissolve, or raise minShot so every shot outlasts it")
+			}
+		}
+	}
 	profile := timeline.Landscape(30)
 	// PunchIn works in profile space (use_profile=1), so reframe's crop is
 	// resolution-independent and only the resource changes for a draft.
 	media, _, _ := renderSource(src, req.Quality)
 	tl := timeline.New()
 	tl.Profile = profile
+	// A dissolve holds each shot past its cut so the next can blend with it, so
+	// the producers must carry that extra media. Zero leaves every out point
+	// exactly where a hard cut put it.
+	hold := req.Dissolve
 	for i, s := range shots {
 		cx, keep := 0.5, 1.0 // the wide two-shot: centred, no punch-in
 		switch s.Shot {
@@ -152,11 +171,19 @@ func reframeCmd(args []string, stdin io.Reader, stdout io.Writer) error {
 			ID:       fmt.Sprintf("shot%d", i),
 			Resource: media,
 			In:       timeline.Clock(s.Start),
-			Out:      timeline.Clock(s.End),
+			Out:      timeline.Clock(outFor(s.End, i, len(shots), hold)),
 			Filters:  []timeline.Filter{timeline.PunchIn(profile, keep, cx, faceY)},
 		})
 	}
-	tl.Sequence("edit")
+	spans := make([]timeline.Span, len(shots))
+	for i, s := range shots {
+		spans[i] = timeline.Span{Start: s.Start, End: s.End}
+	}
+	// Fall back to a straight cut sequence when no dissolve is asked for, so the
+	// default output is exactly what it has always been.
+	if overlaps := tl.DissolveSequence("edit", spans, req.Dissolve); overlaps == nil {
+		tl.Sequence("edit")
+	}
 	if problems := tl.Validate(); len(problems) > 0 {
 		return axerror.New("timeline.invalid",
 			fmt.Sprintf("composed edit is not renderable: %v", problems)).
@@ -253,6 +280,17 @@ func lastTurnEnd(s project.Speakers) float64 {
 		if t.End > end {
 			end = t.End
 		}
+	}
+	return end
+}
+
+// outFor is where a shot's producer stops reading its source. A dissolve holds
+// every shot but the last `hold` seconds past its cut point, because the next
+// shot blends over that tail — a shot blended past media it does not have
+// renders black.
+func outFor(end float64, i, n int, hold float64) float64 {
+	if hold > 0 && i < n-1 {
+		return end + hold
 	}
 	return end
 }
