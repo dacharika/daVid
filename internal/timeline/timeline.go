@@ -295,10 +295,16 @@ func Clock(seconds float64) string {
 	if seconds < 0 {
 		seconds = 0
 	}
-	h := int(seconds) / 3600
-	m := (int(seconds) % 3600) / 60
-	s := seconds - float64(h*3600+m*60)
-	return fmt.Sprintf("%02d:%02d:%06.3f", h, m, s)
+	// Round to whole milliseconds before decomposing into h/m/s so a fractional
+	// part that rounds up carries into the next second/minute/hour instead of
+	// leaving a seconds field the format would render as an out-of-range 60.000,
+	// which melt cannot parse. Decomposing off the truncated int and letting
+	// %06.3f round the leftover produced exactly that on a boundary time.
+	ms := int64(seconds*1000 + 0.5)
+	h := ms / 3600000
+	m := (ms % 3600000) / 60000
+	s := ms % 60000
+	return fmt.Sprintf("%02d:%02d:%02d.%03d", h, m, s/1000, s%1000)
 }
 
 // NewFilter builds a filter for the given mlt_service with ordered properties

@@ -62,6 +62,30 @@ func TestClockRejectsNegativeTime(t *testing.T) {
 	}
 }
 
+// A sub-millisecond time that rounds up must carry into the next minute/hour
+// rather than emit an out-of-range :60.000 seconds field melt cannot parse.
+func TestClockRoundsAndCarries(t *testing.T) {
+	cases := []struct {
+		seconds float64
+		want    string
+	}{
+		{0, "00:00:00.000"},
+		{12.5, "00:00:12.500"},
+		{3671.25, "01:01:11.250"},
+		{-5, "00:00:00.000"},
+		// Boundary times whose fractional part rounds up: the carry must roll
+		// the seconds to zero and bump the minute/hour, never render :60.000.
+		{59.9996, "00:01:00.000"},
+		{119.9999, "00:02:00.000"},
+		{3599.9999, "01:00:00.000"},
+	}
+	for _, c := range cases {
+		if got := Clock(c.seconds); got != c.want {
+			t.Errorf("Clock(%g) = %q, want %q", c.seconds, got, c.want)
+		}
+	}
+}
+
 func TestNewFilterAndTransitionPutServiceFirst(t *testing.T) {
 	f := NewFilter("avfilter.eq", "av.contrast", "1.1")
 	if f.Properties[0].Name != "mlt_service" || f.Properties[0].Value != "avfilter.eq" {
