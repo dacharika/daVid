@@ -54,12 +54,19 @@ func main() {
 // nil) progress is discarded and the observable contract — exactly one JSON
 // result on stdout — is unchanged.
 func run(args []string, stdin io.Reader, stdout io.Writer, stderr ...io.Writer) error {
-	if len(args) == 0 {
-		return usage()
-	}
 	var progressOut io.Writer = io.Discard
 	if len(stderr) > 0 && stderr[0] != nil {
 		progressOut = stderr[0]
+	}
+	// Help goes to the caller's stderr, not the process's: a caller that injects
+	// a writer (the MCP server, every test) must be able to capture it. Resolved
+	// before the no-args check so a bare `cutvec` is captured too.
+	helpOut := progressOut
+	if helpOut == io.Discard {
+		helpOut = os.Stderr
+	}
+	if len(args) == 0 {
+		return usage(helpOut)
 	}
 	switch args[0] {
 	case "describe":
@@ -97,7 +104,7 @@ func run(args []string, stdin io.Reader, stdout io.Writer, stderr ...io.Writer) 
 	case "mcp":
 		return mcpCmd(args[1:], stdin, stdout)
 	case "-h", "--help", "help":
-		return usage()
+		return usage(helpOut)
 	default:
 		return axerror.New("cli.unknown_command",
 			fmt.Sprintf("unknown command %q", args[0])).
@@ -1626,15 +1633,28 @@ func mapSourceErr(err error) error {
 
 // usage prints the catalog's tool names so a caller (human or agent) can
 // discover the surface without a separate help system.
-func usage() error {
-	fmt.Fprintln(os.Stderr, "cutvec — agent-native video-editing CLI + MCP server")
-	fmt.Fprintln(os.Stderr, "\nusage: cutvec <command> [args]\n\ncommands:")
-	fmt.Fprintln(os.Stderr, "  describe   emit the tool catalog (--json for the tools array)")
-	fmt.Fprintln(os.Stderr, "  schema     emit the JSON Schema for one command: schema <cmd>")
-	fmt.Fprintln(os.Stderr, "  mcp        serve the catalog over MCP (not yet implemented)")
+func usage(w io.Writer) error {
+	fmt.Fprintln(w, "cutvec — agent-native video-editing CLI + MCP server")
+	fmt.Fprintln(w, "\nusage: cutvec <command> [args]\n\ncommands:")
+	// The meta commands are not catalog tools, so they are listed by hand; every
+	// real tool comes from the catalog below, which is the single source of truth.
+	// `describe` is deliberately NOT repeated here — it is a catalog tool and the
+	// loop prints it.
+	// Padded to the same 12-char column the catalog loop below uses.
+	fmt.Fprintf(w, "  %-12s %s\n", "schema", "emit the JSON Schema for one command: schema <cmd>")
+	fmt.Fprintf(w, "  %-12s %s\n", "mcp serve", "serve the tool catalog over MCP (JSON-RPC on stdio)")
+	// %-12s, not %-10s: the longest tool name is `reframe-edit` (12), and a
+	// narrower field pushes its summary out of the column.
 	for _, t := range catalog.Default().Tools {
-		fmt.Fprintf(os.Stderr, "  %-10s %s\n", t.Name, t.Summary)
+		fmt.Fprintf(w, "  %-12s %s\n", t.Name, t.Summary)
 	}
+	// Deliberately hedged: `filters`, `schema` and `assets` take a positional
+	// argument rather than a stdin body, and the read-only tools (describe,
+	// doctor, filters) reject --plan outright. Claiming either applies
+	// universally would send an agent into an avoidable cli.unknown_flag.
+	fmt.Fprintln(w, "\ntools take a JSON request on stdin and emit one JSON document on stdout;")
+	fmt.Fprintln(w, "a tool that acts also takes --plan to report what it would do, without doing it.")
+	fmt.Fprintln(w, "run `cutvec schema <cmd>` for one tool's exact request shape.")
 	return nil
 }
 
