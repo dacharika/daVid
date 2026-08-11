@@ -113,6 +113,26 @@ jobs:
         # A syntax error in a worker is invisible to the Go suite until a
         # pipeline run fails halfway through.
         run: python -m compileall -q workers/
+      - name: Every worker entry point is executable
+        # doctor tells an agent to point CUTVEC_*_WORKER at these files, and the
+        # core exec()s that path directly. A worker committed 100644 therefore
+        # dies with "permission denied" on a fresh clone even though the file is
+        # right there with a #!/usr/bin/env python3 line promising otherwise —
+        # a dead end in the primary onboarding path that no other check catches.
+        # The rule: shebang + __main__ means entry point means mode 755. The two
+        # library modules (cutvec_worker.py, embedder.py) have neither and stay 644.
+        run: |
+          status=0
+          while read -r mode _ _ path; do
+            case "$path" in *.py) ;; *) continue ;; esac
+            head -1 "$path" | grep -q '^#!' || continue
+            grep -q '__main__' "$path" || continue
+            if [ "$mode" != "100755" ]; then
+              echo "::error file=$path::worker entry point is mode $mode, want 100755 — run: git update-index --chmod=+x $path"
+              status=1
+            fi
+          done <<< "$(git ls-files -s workers/)"
+          exit $status
 
   contract:
     name: Worker protocol contract

@@ -16,3 +16,5 @@ assets search (the SFX/b-roll retrieval half of the vector-search capability) re
 - [ ] go build ./... and go test ./... both exit 0
 ## Log
 - 2026-08-10T20:57:57Z adopted by a-root (owner a-go-auditor-dpd5dj orphaned)
+- 2026-08-10T22:18:34Z claimed by a-fixer-dkm65b
+- 2026-08-10T22:21:49Z a-fixer-dkm65b: PR opened: https://github.com/mlnomadpy/cutvec/pull/41 (event 01KZPW8GZTSS78JX22W7GDQY81)
