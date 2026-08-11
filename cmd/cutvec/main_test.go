@@ -158,6 +158,19 @@ func TestHelperProcess(t *testing.T) {
 		out, _ := json.Marshal(resp)
 		os.Stdout.Write(out)
 		os.Exit(0)
+	case "verify":
+		// Stand in for melt's null consumer. The timeline path decides the
+		// verdict so a test can exercise both without melt: anything named
+		// *-broken.mlt reports the load failure melt would put on stderr.
+		tl, _ := req.Params["timeline"].(string)
+		res := map[string]any{"ok": true, "problems": []any{}, "frames": 10, "seconds": 0.35}
+		if strings.Contains(tl, "-broken") {
+			res["ok"] = false
+			res["problems"] = []any{`[producer_xml] failed to load producer "/nope/missing.mp4"`}
+		}
+		out, _ := json.Marshal(worker.Response{Version: worker.ContractVersion, Result: res})
+		os.Stdout.Write(out)
+		os.Exit(0)
 	case "render":
 		// Stand in for melt: write a fake rendered video to the requested output
 		// path, then report success — exercising the real subprocess round-trip

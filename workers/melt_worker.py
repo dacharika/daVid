@@ -5,6 +5,10 @@ op: "render"
 params: {"timeline": "<path to .mlt>", "output": "<path to write>", "quality": "proxy"|"final"}
 result: {"output", "quality", "bytes"}
 
+op: "verify"
+params: {"timeline": "<path to .mlt>", "frames": N}
+result: {"ok": bool, "problems": [...], "frames", "seconds"}
+
 op: "filters"
 params: {"query": "<substring>", "name": "<exact filter>", "limit": N}
 result: {"filters":[{"name","description","params":[{"name","type","description"}]}], "count", "total"}
@@ -28,6 +32,7 @@ from __future__ import annotations
 
 import os
 import subprocess
+import time
 from pathlib import Path
 
 from cutvec_worker import WorkerError, log, need, require_tool, run_tool, serve_ops
@@ -140,5 +145,73 @@ def handle_render(params: dict) -> dict:
     return {"output": output, "quality": quality, "bytes": size}
 
 
+# Lines melt writes to stderr when it cannot load or play part of a timeline.
+# Matched case-insensitively as substrings, because the surrounding text varies
+# by MLT build and by which module failed.
+LOAD_FAILURES = (
+    "failed to load producer",
+    "invalid document",
+    "unable to load",
+    "cannot open",
+    "no such file",
+)
+
+
+def handle_verify(params: dict) -> dict:
+    """Play a timeline through the null consumer to prove melt can render it.
+
+    `--plan` validates structure in Go, which cannot know whether melt will
+    actually resolve every producer and filter. This runs the real graph with no
+    encoder attached, so a broken timeline fails in well under a second instead
+    of after minutes of rendering.
+
+    IMPORTANT: melt exits 0 even when a producer fails to load — measured, with
+    "failed to load producer" on stderr and status 0. So this reads stderr and
+    ignores the exit code for that determination. Branching on the exit code
+    would report success on a broken timeline, which is worse than no check at
+    all because it manufactures confidence.
+    """
+    timeline = need(params, "timeline")
+    if not Path(timeline).exists():
+        raise WorkerError(
+            "input.invalid",
+            f"timeline does not exist: {timeline}",
+            hint="build a timeline with `cutvec timeline` before verifying",
+        )
+    # Bounded on purpose: this answers "does it load and start", not "does every
+    # frame of the whole edit render", which would cost as much as rendering.
+    frames = int(params.get("frames") or 10)
+    if frames < 1:
+        frames = 1
+    melt = require_tool("melt", "brew install mlt (provides melt, the MLT XML renderer)")
+
+    started = time.monotonic()
+    log(f"verifying {Path(timeline).name} over {frames} frames")
+    proc = subprocess.run(
+        [melt, timeline, "-consumer", "null", f"out={frames - 1}"],
+        capture_output=True,
+        text=True,
+    )
+    elapsed = round(time.monotonic() - started, 3)
+
+    blob = f"{proc.stderr or ''}\n{proc.stdout or ''}"
+    problems = sorted(
+        {
+            line.strip()
+            for line in blob.splitlines()
+            if any(sig in line.lower() for sig in LOAD_FAILURES)
+        }
+    )
+    # A non-zero exit is still a failure worth reporting; it is only the
+    # *absence* of one that proves nothing.
+    if proc.returncode != 0 and not problems:
+        tail = (proc.stderr or "").strip().splitlines()[-3:]
+        problems = [f"melt exited {proc.returncode}: " + " / ".join(tail)]
+
+    ok = not problems
+    log(f"verify {'ok' if ok else 'FAILED'} in {elapsed}s")
+    return {"ok": ok, "problems": problems, "frames": frames, "seconds": elapsed}
+
+
 if __name__ == "__main__":
-    serve_ops({"render": handle_render, "filters": handle_filters})
+    serve_ops({"render": handle_render, "filters": handle_filters, "verify": handle_verify})
