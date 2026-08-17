@@ -8,10 +8,10 @@ import (
 	"context"
 	"io"
 
-	"github.com/tahabsn/cutvec/internal/axerror"
-	"github.com/tahabsn/cutvec/internal/progress"
-	"github.com/tahabsn/cutvec/internal/project"
-	"github.com/tahabsn/cutvec/internal/worker"
+	"github.com/mlnomadpy/daVid/internal/axerror"
+	"github.com/mlnomadpy/daVid/internal/progress"
+	"github.com/mlnomadpy/daVid/internal/project"
+	"github.com/mlnomadpy/daVid/internal/worker"
 )
 
 // transcribeRequest is the JSON document for the `transcribe` tool. Project is

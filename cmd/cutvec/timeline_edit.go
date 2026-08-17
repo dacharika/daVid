@@ -8,9 +8,9 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/tahabsn/cutvec/internal/axerror"
-	"github.com/tahabsn/cutvec/internal/project"
-	"github.com/tahabsn/cutvec/internal/timeline"
+	"github.com/mlnomadpy/daVid/internal/axerror"
+	"github.com/mlnomadpy/daVid/internal/project"
+	"github.com/mlnomadpy/daVid/internal/timeline"
 )
 
 // A timeline is a declarative, diffable artifact, so the cheapest way to change

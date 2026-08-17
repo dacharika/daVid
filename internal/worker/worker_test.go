@@ -8,7 +8,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/tahabsn/cutvec/internal/axerror"
+	"github.com/mlnomadpy/daVid/internal/axerror"
 )
 
 // fakeWorker returns a Worker that re-execs this test binary as the subprocess,

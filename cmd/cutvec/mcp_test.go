@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/tahabsn/cutvec/internal/catalog"
+	"github.com/mlnomadpy/daVid/internal/catalog"
 )
 
 // serveMCP runs the stdio loop over the given JSON-RPC lines and returns the
