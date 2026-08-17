@@ -31,3 +31,4 @@ The failure mode to guard: a malformed animation string is not rejected by MLT, 
 
 ## Log
 - 2026-08-11 filed by a-root from the MLT capability audit
+- 2026-08-17T03:17:19Z claimed by a-v8t287gq0d
