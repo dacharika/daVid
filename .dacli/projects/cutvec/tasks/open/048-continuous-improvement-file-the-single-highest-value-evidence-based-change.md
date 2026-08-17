@@ -1,11 +1,10 @@
 ---
-id: t-01KZ959008NRET86PW725WA6PR
+id: t-01M06VK479YG36FMDM53HJAPXQ
 kind: task
-created: 2026-08-05T14:29:41Z
+created: 2026-08-17T03:17:40Z
 created_by: loop
-owner: a-root
+owner: loop
 priority: should
-estimate: "{optimistic: 1, probable: 2, pessimistic: 4}"
 ---
 # Continuous improvement: file the single highest-value evidence-based change
 ## Context
@@ -14,5 +13,3 @@ Standing anchor for the autonomous review phase. Survey the code, tests, CI, and
 - [ ] Filed at least one new task grounded in an observed defect, finding, or failing check
 - [ ] Did not implement any change in this task
 ## Log
-- 2026-08-10T15:08:51Z adopted by a-root (owner loop orphaned)
-- 2026-08-10T16:48:36Z claimed by a-go-auditor-kjm329

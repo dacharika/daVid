@@ -1,6 +1,6 @@
-// Command cutvec is the agent-native video-editing CLI and MCP server. Both
+// Command daVid is the agent-native video-editing CLI and MCP server. Both
 // surfaces are driven by one self-describing catalog (see internal/catalog): the
-// CLI dispatches subcommands from it, and `cutvec mcp` will serve the same tools
+// CLI dispatches subcommands from it, and `daVid mcp` will serve the same tools
 // over MCP. IO is JSON on stdout; failures are the structured axerror shape.
 package main
 
@@ -22,7 +22,7 @@ type timelineRequest struct {
 	Project string         `json:"project"`
 	Clips   []timelineClip `json:"clips"`
 	// Effects attach MLT filters to the timeline: either named presets or any
-	// MLT service by name. `cutvec filters` lists what this machine's MLT has.
+	// MLT service by name. `daVid filters` lists what this machine's MLT has.
 	Effects []effectSpec `json:"effects"`
 	// Audio lays sounds under the edit as mixed MLT tracks.
 	Audio []audioSpec `json:"audio"`

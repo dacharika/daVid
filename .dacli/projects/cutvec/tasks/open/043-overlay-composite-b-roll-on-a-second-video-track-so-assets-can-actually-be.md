@@ -26,3 +26,4 @@ So retrieved b-roll can only be placed as a full cutaway that replaces the inter
 
 ## Log
 - 2026-08-11 filed by a-root from the MLT capability audit
+- 2026-08-17T03:17:19Z claimed by a-6jyh2fmkjw

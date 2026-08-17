@@ -1,6 +1,6 @@
-// Command cutvec is the agent-native video-editing CLI and MCP server. Both
+// Command daVid is the agent-native video-editing CLI and MCP server. Both
 // surfaces are driven by one self-describing catalog (see internal/catalog): the
-// CLI dispatches subcommands from it, and `cutvec mcp` will serve the same tools
+// CLI dispatches subcommands from it, and `daVid mcp` will serve the same tools
 // over MCP. IO is JSON on stdout; failures are the structured axerror shape.
 package main
 
@@ -21,7 +21,7 @@ import (
 // required (and may instead be given as a positional argument). Source names the
 // ingested source to analyse — its path, id, or hash — and may be omitted when the
 // project holds exactly one source. Worker/WorkerArgs locate the mediapipe worker
-// executable; when Worker is empty the CUTVEC_MEDIAPIPE_WORKER env var is used.
+// executable; when Worker is empty the DAVID_MEDIAPIPE_WORKER env var is used.
 // The speaker layout is a fixed two-person constant, not a request field, so the
 // cache key stays the bare source hash with no layout collision.
 type speakersRequest struct {
@@ -53,7 +53,7 @@ type speakersResult struct {
 // that invokes no worker. Detection runs against a fixed two-person layout. The
 // turns themselves (speaker label with start/end times) live at the returned
 // handle; the JSON result carries the handle, not the turns blob. The project may
-// be given as a positional argument (`cutvec speakers <project>`) or in the JSON
+// be given as a positional argument (`daVid speakers <project>`) or in the JSON
 // request. --plan reports the handle and cache status without running the worker.
 func speakersCmd(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 	posProject, plan, err := parseSpeakersArgs(args)
@@ -69,13 +69,13 @@ func speakersCmd(args []string, stdin io.Reader, stdout, stderr io.Writer) error
 	}
 	if req.Project == "" {
 		return axerror.New("input.invalid", "project directory is required").
-			WithHint(`pass it as an argument (cutvec speakers <project>) or set "project" in the JSON request`)
+			WithHint(`pass it as an argument (daVid speakers <project>) or set "project" in the JSON request`)
 	}
 
 	proj := project.Open(req.Project)
 	if !proj.Initialized() {
 		return axerror.New("project.uninitialized", "project is not initialised").
-			WithHint("run `cutvec init` on this directory first")
+			WithHint("run `daVid init` on this directory first")
 	}
 	m, err := proj.Load()
 	if err != nil {
@@ -188,7 +188,7 @@ func parseSpeakersArgs(args []string) (proj string, plan bool, err error) {
 			if proj != "" {
 				return "", false, axerror.New("input.invalid",
 					"speakers takes at most one project argument").
-					WithHint("name one project, e.g. `cutvec speakers ./proj`")
+					WithHint("name one project, e.g. `daVid speakers ./proj`")
 			}
 			proj = a
 		}
@@ -197,7 +197,7 @@ func parseSpeakersArgs(args []string) (proj string, plan bool, err error) {
 }
 
 // resolveMediapipeWorker builds the mediapipe Worker from the request, falling
-// back to the CUTVEC_MEDIAPIPE_WORKER env var for the executable path. With
+// back to the DAVID_MEDIAPIPE_WORKER env var for the executable path. With
 // neither set there is no worker to run, which is a non-retryable worker.missing.
 func resolveMediapipeWorker(req speakersRequest) (worker.Worker, error) {
 	return resolveNamedWorker(req.Worker, req.WorkerArgs, mediapipeWorkerSpec)

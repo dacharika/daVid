@@ -129,11 +129,11 @@ func shortsCmd(args []string, stdin io.Reader, stdout io.Writer) error {
 	}
 	if req.Project == "" {
 		return axerror.New("input.invalid", "project directory is required").
-			WithHint(`pass it as an argument (cutvec shorts <project> "<query>") or set "project" in the JSON request`)
+			WithHint(`pass it as an argument (daVid shorts <project> "<query>") or set "project" in the JSON request`)
 	}
 	if req.Query == "" {
 		return axerror.New("input.empty", "no query to build shorts from").
-			WithHint(`pass a query argument (cutvec shorts <project> "<query>") or set "query" in the JSON request`)
+			WithHint(`pass a query argument (daVid shorts <project> "<query>") or set "query" in the JSON request`)
 	}
 	if req.Count <= 0 {
 		req.Count = 3
@@ -157,7 +157,7 @@ func shortsCmd(args []string, stdin io.Reader, stdout io.Writer) error {
 	proj := project.Open(req.Project)
 	if !proj.Initialized() {
 		return axerror.New("project.uninitialized", "project is not initialised").
-			WithHint("run `cutvec init` on this directory first")
+			WithHint("run `daVid init` on this directory first")
 	}
 	m, err := proj.Load()
 	if err != nil {
@@ -171,15 +171,15 @@ func shortsCmd(args []string, stdin io.Reader, stdout io.Writer) error {
 	// Preconditions are stated, not discovered halfway through a render.
 	if !proj.HasIndex(src.Hash) {
 		return axerror.New("index.missing", "source has no index to search").
-			WithHint("run `cutvec index` on this source first")
+			WithHint("run `daVid index` on this source first")
 	}
 	if !proj.HasTranscript(src.Hash) {
 		return axerror.New("transcript.missing", "source has no transcript for captions").
-			WithHint("run `cutvec transcribe` on this source first")
+			WithHint("run `daVid transcribe` on this source first")
 	}
 	if !proj.HasSpeakers(src.Hash) {
 		return axerror.New("speakers.missing", "source has no speaker track to frame on").
-			WithHint("run `cutvec speakers` on this source first")
+			WithHint("run `daVid speakers` on this source first")
 	}
 	transcript, err := proj.ReadTranscript(src.Hash)
 	if err != nil {
@@ -268,7 +268,7 @@ func shortsCmd(args []string, stdin io.Reader, stdout io.Writer) error {
 		if problems := tl.Validate(); len(problems) > 0 {
 			return axerror.New("timeline.invalid",
 				"composed timeline is not renderable: "+strings.Join(problems, "; ")).
-				WithHint("this is a cutvec bug — the recipe built an incomplete timeline")
+				WithHint("this is a daVid bug — the recipe built an incomplete timeline")
 		}
 		xmlBytes, err := tl.Marshal()
 		if err != nil {

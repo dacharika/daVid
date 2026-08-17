@@ -46,7 +46,7 @@ type verifyResult struct {
 func timelineVerifyCmd(args []string, stdin io.Reader, stdout io.Writer) error {
 	if len(args) > 0 {
 		return axerror.New("cli.unknown_flag", fmt.Sprintf("unexpected argument %q", args[0])).
-			WithHint("`cutvec timeline verify` takes its input as JSON on stdin")
+			WithHint("`daVid timeline verify` takes its input as JSON on stdin")
 	}
 	var req verifyRequest
 	if err := decodeOptionalRequest(stdin, &req); err != nil {
@@ -61,7 +61,7 @@ func timelineVerifyCmd(args []string, stdin io.Reader, stdout io.Writer) error {
 		proj := project.Open(req.Project)
 		if !proj.Initialized() {
 			return axerror.New("project.uninitialized", "project is not initialised").
-				WithHint("run `cutvec init` on this directory first")
+				WithHint("run `daVid init` on this directory first")
 		}
 		path = proj.TimelinePath()
 	}

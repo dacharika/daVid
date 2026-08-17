@@ -20,7 +20,7 @@ const maxFrameBytes = 8 << 20
 
 // The MCP server exposes the same catalog the CLI dispatches from, over
 // JSON-RPC on stdio. tools/call routes back into run() — the identical code path
-// `cutvec <cmd>` takes — so the two surfaces cannot drift: a tool added to the
+// `daVid <cmd>` takes — so the two surfaces cannot drift: a tool added to the
 // catalog appears on both, and a fix to a command fixes it for both.
 //
 // Results are returned as text content carrying the tool's JSON, and failures
@@ -77,20 +77,20 @@ type mcpCallResult struct {
 	IsError bool         `json:"isError,omitempty"`
 }
 
-// mcpCmd is the `cutvec mcp serve` entry point. The subcommand is required
+// mcpCmd is the `daVid mcp serve` entry point. The subcommand is required
 // rather than implied so that adding another MCP mode later (an http transport,
-// say) does not change what a bare `cutvec mcp` does.
+// say) does not change what a bare `daVid mcp` does.
 func mcpCmd(args []string, stdin io.Reader, stdout io.Writer) error {
 	if len(args) == 0 {
 		return axerror.New("input.empty", "no mcp subcommand given").
-			WithHint("run `cutvec mcp serve` to serve the tool catalog over stdio")
+			WithHint("run `daVid mcp serve` to serve the tool catalog over stdio")
 	}
 	switch args[0] {
 	case "serve":
 		if len(args) > 1 {
 			return axerror.New("cli.unknown_flag",
 				fmt.Sprintf("unexpected argument %q", args[1])).
-				WithHint("`cutvec mcp serve` takes no arguments; it speaks JSON-RPC on stdio")
+				WithHint("`daVid mcp serve` takes no arguments; it speaks JSON-RPC on stdio")
 		}
 		return mcpServe(stdin, stdout)
 	default:
@@ -162,7 +162,7 @@ func dispatchMCP(req rpcRequest) (any, *rpcError) {
 		return map[string]any{
 			"protocolVersion": version,
 			"capabilities":    map[string]any{"tools": map[string]any{"listChanged": false}},
-			"serverInfo":      map[string]any{"name": "cutvec", "version": catalog.Default().Version},
+			"serverInfo":      map[string]any{"name": "daVid", "version": catalog.Default().Version},
 		}, nil
 
 	case "notifications/initialized", "initialized":

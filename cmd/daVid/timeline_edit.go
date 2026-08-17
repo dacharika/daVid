@@ -154,7 +154,7 @@ func timelineEditCmd(args []string, stdin io.Reader, stdout io.Writer) error {
 	}
 	if len(positionals) > 1 {
 		return axerror.New("input.invalid", "timeline edit takes at most one project argument").
-			WithHint("name one project, e.g. `cutvec timeline edit ./proj`")
+			WithHint("name one project, e.g. `daVid timeline edit ./proj`")
 	}
 
 	var req timelineEditRequest
@@ -166,7 +166,7 @@ func timelineEditCmd(args []string, stdin io.Reader, stdout io.Writer) error {
 	}
 	if req.Project == "" {
 		return axerror.New("input.invalid", "project directory is required").
-			WithHint(`pass it as an argument (cutvec timeline edit <project>) or set "project" in the JSON request`)
+			WithHint(`pass it as an argument (daVid timeline edit <project>) or set "project" in the JSON request`)
 	}
 	if len(req.Remove) == 0 && len(req.Add) == 0 {
 		return axerror.New("input.empty", "edit changes nothing: no filters to add or remove").
@@ -197,7 +197,7 @@ func timelineEditCmd(args []string, stdin io.Reader, stdout io.Writer) error {
 		if n == 0 {
 			return axerror.New("filter.not_found",
 				fmt.Sprintf("producer %q has no %q filter to remove", r.Producer, r.Service)).
-				WithHint("run `cutvec timeline inspect <project>` to see each producer's filters")
+				WithHint("run `daVid timeline inspect <project>` to see each producer's filters")
 		}
 		removed += n
 		touched[r.Producer] = true
@@ -303,14 +303,14 @@ func loadTimeline(proj project.Project) (*timeline.Timeline, string, error) {
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			return nil, "", axerror.New("timeline.missing", "project has no built timeline").
-				WithHint("run `cutvec timeline` to build a timeline first")
+				WithHint("run `daVid timeline` to build a timeline first")
 		}
 		return nil, "", axerror.New("project.read", "cannot read timeline: "+err.Error()).AsRetryable()
 	}
 	tl, err := timeline.Parse(data)
 	if err != nil {
 		return nil, "", axerror.New("timeline.parse", "timeline is not valid MLT XML: "+err.Error()).
-			WithHint("the timeline file is corrupt; rebuild it with `cutvec timeline`")
+			WithHint("the timeline file is corrupt; rebuild it with `daVid timeline`")
 	}
 	return tl, tlPath, nil
 }

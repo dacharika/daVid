@@ -14,7 +14,7 @@ import (
 	"github.com/mlnomadpy/daVid/internal/worker"
 )
 
-// Effects are how cutvec stays as capable as MLT itself. Rather than wrapping a
+// Effects are how daVid stays as capable as MLT itself. Rather than wrapping a
 // handful of chosen operations, a timeline can carry any MLT filter by service
 // name and properties — several hundred of them, including the whole avfilter
 // set — and `filters` lets an agent discover that registry at runtime instead of
@@ -121,7 +121,7 @@ func resolveEffects(specs []effectSpec) (map[string][]timeline.Filter, error) {
 			return nil, axerror.New("input.invalid",
 				fmt.Sprintf("effect %d names neither a preset nor a service", i)).
 				WithHint(`set "preset" (` + strings.Join(presetNames(), ", ") +
-					`) or "service" to an MLT filter name — run ` + "`cutvec filters`" +
+					`) or "service" to an MLT filter name — run ` + "`daVid filters`" +
 					` to discover them`)
 		}
 		out[spec.Producer] = append(out[spec.Producer], filters...)
@@ -307,7 +307,7 @@ func filtersCmd(args []string, stdin io.Reader, stdout io.Writer) error {
 	for _, a := range args {
 		if strings.HasPrefix(a, "--") {
 			return axerror.New("cli.unknown_flag", fmt.Sprintf("unknown flag %q", a)).
-				WithHint("pass a search term as an argument, e.g. `cutvec filters denoise`")
+				WithHint("pass a search term as an argument, e.g. `daVid filters denoise`")
 		}
 		if posQuery != "" {
 			return axerror.New("input.invalid", "filters takes at most one search term").

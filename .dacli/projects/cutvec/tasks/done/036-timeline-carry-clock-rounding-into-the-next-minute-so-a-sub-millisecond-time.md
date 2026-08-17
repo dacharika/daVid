@@ -21,3 +21,5 @@ every MLT timestamp cutvec writes is a valid clock melt can parse, not an out-of
 - 2026-08-11T09:52:28Z verified by `go build ./... && go test ./... -count=1` (exit 0)
 - 2026-08-11T09:52:28Z deliverable: dacli/036-timeline-carry-clock-rounding-into-the-next-minute-so-a-sub-millisecond-time exists but is NOT in main — closed anyway
 - 2026-08-11T09:52:28Z completed by a-root
+- 2026-08-17T03:13:20Z status done proposed by a-fixer-dxscgf, applied (event 01KZR0NQHAJYK1EQVWT95XHNZH)
+- 2026-08-17T03:13:20Z a-fixer-dxscgf: PR opened: https://github.com/mlnomadpy/cutvec/pull/43 (event 01KZR0PA2X41TQA21CHK8QKK2F)
