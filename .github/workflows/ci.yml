@@ -150,7 +150,7 @@ jobs:
         # Runs each worker with no ML dependencies installed: every one must
         # still return a well-formed JSON Response with a structured error
         # rather than a traceback, which is the promise the core relies on.
-        run: go test -run TestWorkerContract -v ./cmd/cutvec
+        run: go test -run TestWorkerContract -v ./cmd/daVid
 
   # The repository's ruleset requires a check with this exact name, and that
   # name predates the jobs above being split up. Rather than rename the rule,

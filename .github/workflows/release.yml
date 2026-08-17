@@ -46,24 +46,24 @@ jobs:
           CGO_ENABLED: "0"
         run: |
           version="${{ github.event.inputs.tag || github.ref_name }}"
-          mkdir -p dist/cutvec
+          mkdir -p dist/daVid
           # -trimpath keeps build paths out of the binary, so two builds of the
           # same commit are byte-identical rather than carrying whoever built them.
           go build -trimpath -ldflags "-s -w -X main.version=${version}" \
-            -o dist/cutvec/cutvec ./cmd/cutvec
-          cp -r workers dist/cutvec/workers
-          cp README.md AGENTS.md dist/cutvec/ 2>/dev/null || true
-          tar -C dist -czf "cutvec_${version}_${{ matrix.goos }}_${{ matrix.goarch }}.tar.gz" cutvec
+            -o dist/daVid/daVid ./cmd/daVid
+          cp -r workers dist/daVid/workers
+          cp README.md AGENTS.md dist/daVid/ 2>/dev/null || true
+          tar -C dist -czf "daVid_${version}_${{ matrix.goos }}_${{ matrix.goarch }}.tar.gz" daVid
 
       - name: Checksum
-        run: sha256sum cutvec_*.tar.gz > "cutvec_${{ matrix.goos }}_${{ matrix.goarch }}.sha256"
+        run: sha256sum daVid_*.tar.gz > "daVid_${{ matrix.goos }}_${{ matrix.goarch }}.sha256"
 
       - uses: actions/upload-artifact@v7
         with:
-          name: cutvec-${{ matrix.goos }}-${{ matrix.goarch }}
+          name: daVid-${{ matrix.goos }}-${{ matrix.goarch }}
           path: |
-            cutvec_*.tar.gz
-            cutvec_*.sha256
+            daVid_*.tar.gz
+            daVid_*.sha256
 
   publish:
     needs: build
