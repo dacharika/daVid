@@ -9,8 +9,8 @@ import (
 	"os"
 	"strings"
 
-	"github.com/tahabsn/cutvec/internal/axerror"
-	"github.com/tahabsn/cutvec/internal/catalog"
+	"github.com/mlnomadpy/daVid/internal/axerror"
+	"github.com/mlnomadpy/daVid/internal/catalog"
 )
 
 // maxFrameBytes caps a single JSON-RPC frame. Requests here carry paths and

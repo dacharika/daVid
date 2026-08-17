@@ -8,9 +8,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/tahabsn/cutvec/internal/axerror"
-	"github.com/tahabsn/cutvec/internal/project"
-	"github.com/tahabsn/cutvec/internal/timeline"
+	"github.com/mlnomadpy/daVid/internal/axerror"
+	"github.com/mlnomadpy/daVid/internal/project"
+	"github.com/mlnomadpy/daVid/internal/timeline"
 )
 
 func filterServices(t *testing.T, filters []timeline.Filter) []string {

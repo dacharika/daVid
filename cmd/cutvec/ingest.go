@@ -9,9 +9,9 @@ import (
 	"io"
 	"os"
 
-	"github.com/tahabsn/cutvec/internal/axerror"
-	"github.com/tahabsn/cutvec/internal/project"
-	"github.com/tahabsn/cutvec/internal/worker"
+	"github.com/mlnomadpy/daVid/internal/axerror"
+	"github.com/mlnomadpy/daVid/internal/project"
+	"github.com/mlnomadpy/daVid/internal/worker"
 )
 
 // ingestRequest is the JSON document for the `ingest` tool: the project to record

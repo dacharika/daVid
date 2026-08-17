@@ -15,9 +15,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/tahabsn/cutvec/internal/axerror"
-	"github.com/tahabsn/cutvec/internal/catalog"
-	"github.com/tahabsn/cutvec/internal/project"
+	"github.com/mlnomadpy/daVid/internal/axerror"
+	"github.com/mlnomadpy/daVid/internal/catalog"
+	"github.com/mlnomadpy/daVid/internal/project"
 )
 
 // progressInterval is how often the long steps heartbeat on stderr. It defaults

@@ -8,8 +8,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/tahabsn/cutvec/internal/project"
-	"github.com/tahabsn/cutvec/internal/timeline"
+	"github.com/mlnomadpy/daVid/internal/project"
+	"github.com/mlnomadpy/daVid/internal/timeline"
 )
 
 // speakerAt decides which seat a short frames on, so a wrong answer points the
