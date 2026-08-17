@@ -7,9 +7,9 @@ package main
 import (
 	"context"
 	"io"
-	"os"
 
 	"github.com/mlnomadpy/daVid/internal/axerror"
+	"github.com/mlnomadpy/daVid/internal/envconfig"
 	"github.com/mlnomadpy/daVid/internal/project"
 	"github.com/mlnomadpy/daVid/internal/worker"
 )
@@ -169,7 +169,7 @@ func resolveDeriver(req ingestRequest) project.Deriver {
 func ffmpegWorkerFor(req ingestRequest) (worker.Worker, bool) {
 	path := req.Worker
 	if path == "" {
-		path = os.Getenv("DAVID_FFMPEG_WORKER")
+		path = envconfig.Lookup("DAVID_FFMPEG_WORKER", "CUTVEC_FFMPEG_WORKER")
 	}
 	if path == "" {
 		return worker.Worker{}, false
