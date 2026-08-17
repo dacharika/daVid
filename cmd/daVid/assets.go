@@ -69,7 +69,7 @@ type assetsSearchResult struct {
 func assetsCmd(args []string, stdin io.Reader, stdout io.Writer) error {
 	if len(args) == 0 {
 		return axerror.New("input.empty", "no assets subcommand given").
-			WithHint("run `cutvec assets index <dir>` or `cutvec assets search \"<description>\"`")
+			WithHint("run `daVid assets index <dir>` or `daVid assets search \"<description>\"`")
 	}
 	sub, rest := args[0], args[1:]
 	switch sub {
@@ -133,12 +133,12 @@ func assetsIndexCmd(args []string, stdin io.Reader, stdout io.Writer) error {
 	}
 	if req.Dir == "" {
 		return axerror.New("input.invalid", "asset directory is required").
-			WithHint("pass the library directory: `cutvec assets index <dir>`")
+			WithHint("pass the library directory: `daVid assets index <dir>`")
 	}
 	proj := project.Open(req.Project)
 	if !proj.Initialized() {
 		return axerror.New("project.uninitialized", "project is not initialised").
-			WithHint("run `cutvec init` on this directory first")
+			WithHint("run `daVid init` on this directory first")
 	}
 
 	var items []map[string]any
@@ -218,12 +218,12 @@ func assetsSearchCmd(args []string, stdin io.Reader, stdout io.Writer) error {
 	}
 	if req.Query == "" {
 		return axerror.New("input.empty", "no query to search assets for").
-			WithHint(`describe the sound you want: cutvec assets search "deep impact hit"`)
+			WithHint(`describe the sound you want: daVid assets search "deep impact hit"`)
 	}
 	proj := project.Open(req.Project)
 	if !proj.Initialized() {
 		return axerror.New("project.uninitialized", "project is not initialised").
-			WithHint("run `cutvec init` on this directory first")
+			WithHint("run `daVid init` on this directory first")
 	}
 
 	w, err := resolveSearchWorker(searchRequest{Worker: req.Worker, WorkerArgs: req.WorkerArgs})

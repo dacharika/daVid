@@ -1,6 +1,6 @@
-// Command cutvec is the agent-native video-editing CLI and MCP server. Both
+// Command daVid is the agent-native video-editing CLI and MCP server. Both
 // surfaces are driven by one self-describing catalog (see internal/catalog): the
-// CLI dispatches subcommands from it, and `cutvec mcp` will serve the same tools
+// CLI dispatches subcommands from it, and `daVid mcp` will serve the same tools
 // over MCP. IO is JSON on stdout; failures are the structured axerror shape.
 package main
 
@@ -18,7 +18,7 @@ import (
 // required (and may instead be given as a positional argument). Source names the
 // ingested source to transcribe — its path, id, or hash — and may be omitted when
 // the project holds exactly one source. Worker/WorkerArgs locate the whisper
-// worker executable; when Worker is empty the CUTVEC_WHISPER_WORKER env var is
+// worker executable; when Worker is empty the DAVID_WHISPER_WORKER env var is
 // used.
 type transcribeRequest struct {
 	Project    string   `json:"project"`
@@ -43,7 +43,7 @@ type transcribeResult struct {
 // it keyed by the source's content hash, so a re-run is a pure cache hit that
 // invokes no worker. The transcript itself (words with start/end times) lives at
 // the returned handle; the JSON result carries the handle, not the transcript
-// blob. The project may be given as a positional argument (`cutvec transcribe
+// blob. The project may be given as a positional argument (`daVid transcribe
 // <project>`) or in the JSON request. --plan reports the handle and cache status
 // without running the worker.
 func transcribeCmd(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
@@ -60,13 +60,13 @@ func transcribeCmd(args []string, stdin io.Reader, stdout, stderr io.Writer) err
 	}
 	if req.Project == "" {
 		return axerror.New("input.invalid", "project directory is required").
-			WithHint(`pass it as an argument (cutvec transcribe <project>) or set "project" in the JSON request`)
+			WithHint(`pass it as an argument (daVid transcribe <project>) or set "project" in the JSON request`)
 	}
 
 	proj := project.Open(req.Project)
 	if !proj.Initialized() {
 		return axerror.New("project.uninitialized", "project is not initialised").
-			WithHint("run `cutvec init` on this directory first")
+			WithHint("run `daVid init` on this directory first")
 	}
 	m, err := proj.Load()
 	if err != nil {
@@ -135,7 +135,7 @@ func transcribeCmd(args []string, stdin io.Reader, stdout, stderr io.Writer) err
 }
 
 // resolveWorker builds the whisper Worker from the request, falling back to the
-// CUTVEC_WHISPER_WORKER env var for the executable path. With neither set there
+// DAVID_WHISPER_WORKER env var for the executable path. With neither set there
 // is no worker to run, which is a non-retryable worker.missing.
 func resolveWorker(req transcribeRequest) (worker.Worker, error) {
 	return resolveNamedWorker(req.Worker, req.WorkerArgs, whisperWorkerSpec)

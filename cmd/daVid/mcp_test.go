@@ -44,8 +44,8 @@ func TestMCPInitializeAnnouncesToolsCapability(t *testing.T) {
 	if res["protocolVersion"] != "2025-06-18" {
 		t.Errorf("protocolVersion = %v, want the client's own version echoed back", res["protocolVersion"])
 	}
-	if info, _ := res["serverInfo"].(map[string]any); info["name"] != "cutvec" {
-		t.Errorf("serverInfo = %v, want name cutvec", info)
+	if info, _ := res["serverInfo"].(map[string]any); info["name"] != "daVid" {
+		t.Errorf("serverInfo = %v, want name daVid", info)
 	}
 }
 

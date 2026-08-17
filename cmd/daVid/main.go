@@ -1,6 +1,6 @@
-// Command cutvec is the agent-native video-editing CLI and MCP server. Both
+// Command daVid is the agent-native video-editing CLI and MCP server. Both
 // surfaces are driven by one self-describing catalog (see internal/catalog): the
-// CLI dispatches subcommands from it, and `cutvec mcp` will serve the same tools
+// CLI dispatches subcommands from it, and `daVid mcp` will serve the same tools
 // over MCP. IO is JSON on stdout; failures are the structured axerror shape.
 package main
 
@@ -21,10 +21,10 @@ import (
 )
 
 // progressInterval is how often the long steps heartbeat on stderr. It defaults
-// to progress's own cadence and can be overridden with CUTVEC_PROGRESS_INTERVAL
+// to progress's own cadence and can be overridden with DAVID_PROGRESS_INTERVAL
 // (any Go duration, e.g. "5s"); an unparseable value falls back to the default.
 func progressInterval() time.Duration {
-	if v := os.Getenv("CUTVEC_PROGRESS_INTERVAL"); v != "" {
+	if v := os.Getenv("DAVID_PROGRESS_INTERVAL"); v != "" {
 		if d, err := time.ParseDuration(v); err == nil && d > 0 {
 			return d
 		}
@@ -55,7 +55,7 @@ func run(args []string, stdin io.Reader, stdout io.Writer, stderr ...io.Writer) 
 	}
 	// Help goes to the caller's stderr, not the process's: a caller that injects
 	// a writer (the MCP server, every test) must be able to capture it. Resolved
-	// before the no-args check so a bare `cutvec` is captured too.
+	// before the no-args check so a bare `daVid` is captured too.
 	helpOut := progressOut
 	if helpOut == io.Discard {
 		helpOut = os.Stderr
@@ -103,7 +103,7 @@ func run(args []string, stdin io.Reader, stdout io.Writer, stderr ...io.Writer) 
 	default:
 		return axerror.New("cli.unknown_command",
 			fmt.Sprintf("unknown command %q", args[0])).
-			WithHint("run `cutvec describe` to list available tools")
+			WithHint("run `daVid describe` to list available tools")
 	}
 }
 
@@ -126,19 +126,19 @@ func describeCmd(args []string, stdout io.Writer) error {
 	return emitJSON(stdout, c)
 }
 
-// schemaCmd emits the JSON Schema for a single command: `cutvec schema <cmd>`
+// schemaCmd emits the JSON Schema for a single command: `daVid schema <cmd>`
 // returns a draft 2020-12 schema whose `input` and `output` describe that tool's
 // typed IO. An unknown command is a stable, branchable error listing the tools
 // the caller can ask about.
 func schemaCmd(args []string, stdout io.Writer) error {
 	if len(args) == 0 {
 		return axerror.New("input.empty", "no command named").
-			WithHint("run `cutvec schema <cmd>`, e.g. `cutvec schema timeline`")
+			WithHint("run `daVid schema <cmd>`, e.g. `daVid schema timeline`")
 	}
 	if len(args) > 1 {
 		return axerror.New("input.invalid",
 			fmt.Sprintf("schema takes one command, got %d args", len(args))).
-			WithHint("name exactly one command, e.g. `cutvec schema timeline`")
+			WithHint("name exactly one command, e.g. `daVid schema timeline`")
 	}
 	c := catalog.Default()
 	tool, ok := c.Lookup(args[0])
@@ -167,7 +167,7 @@ func parseProjectArgs(args []string, cmd string) (proj string, plan bool, err er
 			if proj != "" {
 				return "", false, axerror.New("input.invalid",
 					cmd+" takes at most one project argument").
-					WithHint(fmt.Sprintf("name one project, e.g. `cutvec %s ./proj`", cmd))
+					WithHint(fmt.Sprintf("name one project, e.g. `daVid %s ./proj`", cmd))
 			}
 			proj = a
 		}
@@ -183,7 +183,7 @@ func resolveSource(m project.Manifest, want, verb string) (project.Source, error
 	if len(m.Sources) == 0 {
 		return project.Source{}, axerror.New("input.empty",
 			"project has no ingested sources to "+verb).
-			WithHint("run `cutvec ingest` to add a source first")
+			WithHint("run `daVid ingest` to add a source first")
 	}
 	if want == "" {
 		if len(m.Sources) == 1 {
@@ -200,7 +200,7 @@ func resolveSource(m project.Manifest, want, verb string) (project.Source, error
 	}
 	return project.Source{}, axerror.New("source.missing",
 		"no ingested source matches "+strconv.Quote(want)).
-		WithHint("ingest the source first, or use a path/id from `cutvec status`")
+		WithHint("ingest the source first, or use a path/id from `daVid status`")
 }
 
 // Render quality tiers: a fast draft ("proxy") and a full-quality final render
@@ -273,7 +273,7 @@ func mapSourceErr(err error) error {
 	switch {
 	case errors.Is(err, project.ErrNotInitialized):
 		return axerror.New("project.uninitialized", "project is not initialised").
-			WithHint("run `cutvec init` on this directory first")
+			WithHint("run `daVid init` on this directory first")
 	case errors.Is(err, os.ErrNotExist):
 		return axerror.New("source.missing", "source file not found: "+err.Error()).
 			WithHint("check the source path exists and is readable")
@@ -285,8 +285,8 @@ func mapSourceErr(err error) error {
 // usage prints the catalog's tool names so a caller (human or agent) can
 // discover the surface without a separate help system.
 func usage(w io.Writer) error {
-	fmt.Fprintln(w, "cutvec — agent-native video-editing CLI + MCP server")
-	fmt.Fprintln(w, "\nusage: cutvec <command> [args]\n\ncommands:")
+	fmt.Fprintln(w, "daVid — agent-native video-editing CLI + MCP server")
+	fmt.Fprintln(w, "\nusage: daVid <command> [args]\n\ncommands:")
 	// The meta commands are not catalog tools, so they are listed by hand; every
 	// real tool comes from the catalog below, which is the single source of truth.
 	// `describe` is deliberately NOT repeated here — it is a catalog tool and the
@@ -305,7 +305,7 @@ func usage(w io.Writer) error {
 	// universally would send an agent into an avoidable cli.unknown_flag.
 	fmt.Fprintln(w, "\ntools take a JSON request on stdin and emit one JSON document on stdout;")
 	fmt.Fprintln(w, "a tool that acts also takes --plan to report what it would do, without doing it.")
-	fmt.Fprintln(w, "run `cutvec schema <cmd>` for one tool's exact request shape.")
+	fmt.Fprintln(w, "run `daVid schema <cmd>` for one tool's exact request shape.")
 	return nil
 }
 
@@ -336,9 +336,9 @@ func emitError(err error) {
 // place — a fix to the resolution rule now lands once instead of five times.
 
 var (
-	whisperWorkerSpec   = workerSpec{"CUTVEC_WHISPER_WORKER", "whisper", "whisper worker executable"}
-	indexWorkerSpec     = workerSpec{"CUTVEC_INDEX_WORKER", "index (embedding)", "local embedding worker executable"}
-	searchWorkerSpec    = workerSpec{"CUTVEC_SEARCH_WORKER", "search", "local search worker executable"}
-	mediapipeWorkerSpec = workerSpec{"CUTVEC_MEDIAPIPE_WORKER", "mediapipe", "mediapipe worker executable"}
-	meltWorkerSpec      = workerSpec{"CUTVEC_MELT_WORKER", "melt", "melt render worker executable"}
+	whisperWorkerSpec   = workerSpec{"DAVID_WHISPER_WORKER", "whisper", "whisper worker executable"}
+	indexWorkerSpec     = workerSpec{"DAVID_INDEX_WORKER", "index (embedding)", "local embedding worker executable"}
+	searchWorkerSpec    = workerSpec{"DAVID_SEARCH_WORKER", "search", "local search worker executable"}
+	mediapipeWorkerSpec = workerSpec{"DAVID_MEDIAPIPE_WORKER", "mediapipe", "mediapipe worker executable"}
+	meltWorkerSpec      = workerSpec{"DAVID_MELT_WORKER", "melt", "melt render worker executable"}
 )

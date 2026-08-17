@@ -1,6 +1,6 @@
-// Command cutvec is the agent-native video-editing CLI and MCP server. Both
+// Command daVid is the agent-native video-editing CLI and MCP server. Both
 // surfaces are driven by one self-describing catalog (see internal/catalog): the
-// CLI dispatches subcommands from it, and `cutvec mcp` will serve the same tools
+// CLI dispatches subcommands from it, and `daVid mcp` will serve the same tools
 // over MCP. IO is JSON on stdout; failures are the structured axerror shape.
 package main
 
@@ -18,7 +18,7 @@ import (
 // (and may instead be given as a positional argument). Source names the ingested
 // source whose transcript to embed — its path, id, or hash — and may be omitted
 // when the project holds exactly one source. Worker/WorkerArgs locate the local
-// embedding worker executable; when Worker is empty the CUTVEC_INDEX_WORKER env
+// embedding worker executable; when Worker is empty the DAVID_INDEX_WORKER env
 // var is used.
 type indexRequest struct {
 	Project    string   `json:"project"`
@@ -47,7 +47,7 @@ type indexResult struct {
 // cache hit that invokes no worker. The vectors live in a .lance table the embed
 // worker writes; the JSON result carries the handles (metadata + table), not the
 // vectors. No network or API key is involved — embeddings are produced locally by
-// the worker. The project may be given as a positional argument (`cutvec index
+// the worker. The project may be given as a positional argument (`daVid index
 // <project>`) or in the JSON request. --plan reports the handles and cache status
 // without running the worker.
 func indexCmd(args []string, stdin io.Reader, stdout io.Writer) error {
@@ -64,13 +64,13 @@ func indexCmd(args []string, stdin io.Reader, stdout io.Writer) error {
 	}
 	if req.Project == "" {
 		return axerror.New("input.invalid", "project directory is required").
-			WithHint(`pass it as an argument (cutvec index <project>) or set "project" in the JSON request`)
+			WithHint(`pass it as an argument (daVid index <project>) or set "project" in the JSON request`)
 	}
 
 	proj := project.Open(req.Project)
 	if !proj.Initialized() {
 		return axerror.New("project.uninitialized", "project is not initialised").
-			WithHint("run `cutvec init` on this directory first")
+			WithHint("run `daVid init` on this directory first")
 	}
 	m, err := proj.Load()
 	if err != nil {
@@ -85,7 +85,7 @@ func indexCmd(args []string, stdin io.Reader, stdout io.Writer) error {
 	// transcribed first — a written precondition, like render's built timeline.
 	if !proj.HasTranscript(src.Hash) {
 		return axerror.New("transcript.missing", "source has no transcript to index").
-			WithHint("run `cutvec transcribe` on this source first")
+			WithHint("run `daVid transcribe` on this source first")
 	}
 
 	// Cache hit: the index for these bytes already exists. Return it untouched,
@@ -161,7 +161,7 @@ func indexCmd(args []string, stdin io.Reader, stdout io.Writer) error {
 }
 
 // resolveIndexWorker builds the local embedding Worker from the request, falling
-// back to the CUTVEC_INDEX_WORKER env var for the executable path. With neither
+// back to the DAVID_INDEX_WORKER env var for the executable path. With neither
 // set there is no worker to run, which is a non-retryable worker.missing.
 func resolveIndexWorker(req indexRequest) (worker.Worker, error) {
 	return resolveNamedWorker(req.Worker, req.WorkerArgs, indexWorkerSpec)

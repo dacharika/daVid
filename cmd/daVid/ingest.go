@@ -1,6 +1,6 @@
-// Command cutvec is the agent-native video-editing CLI and MCP server. Both
+// Command daVid is the agent-native video-editing CLI and MCP server. Both
 // surfaces are driven by one self-describing catalog (see internal/catalog): the
-// CLI dispatches subcommands from it, and `cutvec mcp` will serve the same tools
+// CLI dispatches subcommands from it, and `daVid mcp` will serve the same tools
 // over MCP. IO is JSON on stdout; failures are the structured axerror shape.
 package main
 
@@ -17,7 +17,7 @@ import (
 // ingestRequest is the JSON document for the `ingest` tool: the project to record
 // into and the source media file to ingest. Worker/WorkerArgs locate the ffmpeg
 // worker that probes the source's pixel dimensions; when Worker is empty the
-// CUTVEC_FFMPEG_WORKER env var is used, and when neither is set the source is
+// DAVID_FFMPEG_WORKER env var is used, and when neither is set the source is
 // still ingested, just without a probe.
 type ingestRequest struct {
 	// Rehash forces the full content hash to be recomputed instead of trusting
@@ -68,7 +68,7 @@ func ingestCmd(args []string, stdin io.Reader, stdout io.Writer) error {
 	}
 	if !proj.Initialized() {
 		return axerror.New("project.uninitialized", "project is not initialised").
-			WithHint("run `cutvec init` on this directory first")
+			WithHint("run `daVid init` on this directory first")
 	}
 	if plan {
 		src, err := proj.DescribeSource(req.Source)
@@ -106,7 +106,7 @@ func (fp ffmpegProber) Probe(path string) (project.Probe, error) {
 
 // resolveProber returns the ffmpeg prober ingest should use, or nil when no
 // ffmpeg worker is configured. The worker comes from the request's worker field
-// or, failing that, the CUTVEC_FFMPEG_WORKER env var. A nil prober means the
+// or, failing that, the DAVID_FFMPEG_WORKER env var. A nil prober means the
 // source is ingested without a probe rather than failing — dimensions are a best
 // effort, not a precondition for recording the source.
 func resolveProber(req ingestRequest) project.Prober {
@@ -169,7 +169,7 @@ func resolveDeriver(req ingestRequest) project.Deriver {
 func ffmpegWorkerFor(req ingestRequest) (worker.Worker, bool) {
 	path := req.Worker
 	if path == "" {
-		path = os.Getenv("CUTVEC_FFMPEG_WORKER")
+		path = os.Getenv("DAVID_FFMPEG_WORKER")
 	}
 	if path == "" {
 		return worker.Worker{}, false

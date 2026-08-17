@@ -76,7 +76,7 @@ func reframeCmd(args []string, stdin io.Reader, stdout io.Writer) error {
 	}
 	if req.Project == "" {
 		return axerror.New("input.invalid", "project directory is required").
-			WithHint(`pass it as an argument (cutvec reframe-edit <project>) or set "project" in the JSON request`)
+			WithHint(`pass it as an argument (daVid reframe-edit <project>) or set "project" in the JSON request`)
 	}
 	if req.Keep <= 0 {
 		req.Keep = keepSingle
@@ -97,7 +97,7 @@ func reframeCmd(args []string, stdin io.Reader, stdout io.Writer) error {
 	proj := project.Open(req.Project)
 	if !proj.Initialized() {
 		return axerror.New("project.uninitialized", "project is not initialised").
-			WithHint("run `cutvec init` on this directory first")
+			WithHint("run `daVid init` on this directory first")
 	}
 	m, err := proj.Load()
 	if err != nil {
@@ -109,7 +109,7 @@ func reframeCmd(args []string, stdin io.Reader, stdout io.Writer) error {
 	}
 	if !proj.HasSpeakers(src.Hash) {
 		return axerror.New("speakers.missing", "source has no speaker track to cut on").
-			WithHint("run `cutvec speakers` on this source first")
+			WithHint("run `daVid speakers` on this source first")
 	}
 	speakers, err := proj.ReadSpeakers(src.Hash)
 	if err != nil {
@@ -133,7 +133,7 @@ func reframeCmd(args []string, stdin io.Reader, stdout io.Writer) error {
 	}
 	if duration <= 0 {
 		return axerror.New("speakers.empty", "the speaker track has no turns to cut on").
-			WithHint("re-run `cutvec speakers`: an edit needs at least one attributed turn")
+			WithHint("re-run `daVid speakers`: an edit needs at least one attributed turn")
 	}
 
 	shots := planShots(speakers, duration, req.MinShot)
@@ -187,7 +187,7 @@ func reframeCmd(args []string, stdin io.Reader, stdout io.Writer) error {
 	if problems := tl.Validate(); len(problems) > 0 {
 		return axerror.New("timeline.invalid",
 			fmt.Sprintf("composed edit is not renderable: %v", problems)).
-			WithHint("this is a cutvec bug — the recipe built an incomplete timeline")
+			WithHint("this is a daVid bug — the recipe built an incomplete timeline")
 	}
 	xmlBytes, err := tl.Marshal()
 	if err != nil {
