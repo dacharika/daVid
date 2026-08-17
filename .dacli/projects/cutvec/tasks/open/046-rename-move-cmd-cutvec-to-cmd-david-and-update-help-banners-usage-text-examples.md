@@ -18,3 +18,4 @@ the canonical CLI entry point, built binary, and every user-visible hint identif
 - [ ] mcp.go serverInfo.name is 'daVid' and mcp_test.go asserts this
 - [ ] go build ./... and go test ./... -count=1 both exit 0
 ## Log
+- 2026-08-17T12:19:11Z claimed by a-v7etahgp7k
