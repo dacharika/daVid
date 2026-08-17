@@ -11,8 +11,8 @@ import (
 	"os/exec"
 	"strings"
 
-	"github.com/tahabsn/cutvec/internal/axerror"
-	"github.com/tahabsn/cutvec/internal/doctor"
+	"github.com/mlnomadpy/daVid/internal/axerror"
+	"github.com/mlnomadpy/daVid/internal/doctor"
 )
 
 // doctorCmd preflights the whole runtime environment in one call: it probes

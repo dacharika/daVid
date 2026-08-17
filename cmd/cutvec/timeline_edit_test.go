@@ -10,7 +10,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/tahabsn/cutvec/internal/axerror"
+	"github.com/mlnomadpy/daVid/internal/axerror"
 )
 
 // buildTimelineFixture inits a project and builds a two-clip timeline with a crop

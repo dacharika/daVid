@@ -9,8 +9,8 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/tahabsn/cutvec/internal/axerror"
-	"github.com/tahabsn/cutvec/internal/project"
+	"github.com/mlnomadpy/daVid/internal/axerror"
+	"github.com/mlnomadpy/daVid/internal/project"
 )
 
 // initRequest is the JSON document for the `init` tool: the directory to make a

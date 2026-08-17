@@ -6,9 +6,9 @@ import (
 	"io"
 	"strings"
 
-	"github.com/tahabsn/cutvec/internal/axerror"
-	"github.com/tahabsn/cutvec/internal/project"
-	"github.com/tahabsn/cutvec/internal/worker"
+	"github.com/mlnomadpy/daVid/internal/axerror"
+	"github.com/mlnomadpy/daVid/internal/project"
+	"github.com/mlnomadpy/daVid/internal/worker"
 )
 
 // verifyRequest is the JSON document for `timeline verify`: which project's

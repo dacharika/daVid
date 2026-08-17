@@ -9,8 +9,8 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/tahabsn/cutvec/internal/axerror"
-	"github.com/tahabsn/cutvec/internal/worker"
+	"github.com/mlnomadpy/daVid/internal/axerror"
+	"github.com/mlnomadpy/daVid/internal/worker"
 )
 
 // workerSpec is how one step names the executable it needs and explains its
