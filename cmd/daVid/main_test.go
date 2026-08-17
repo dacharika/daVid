@@ -18,7 +18,7 @@ import (
 )
 
 // TestHelperProcess is not a real test: when GO_WANT_HELPER_PROCESS is set it is
-// re-exec'd (via `cutvec transcribe`'s worker path pointing at this test binary
+// re-exec'd (via `daVid transcribe`'s worker path pointing at this test binary
 // with -test.run=TestHelperProcess) as a stand-in whisper worker. It reads the
 // JSON worker Request from stdin and prints a JSON Response to stdout, exercising
 // the real subprocess round-trip without a python interpreter or whisper model.
@@ -565,7 +565,7 @@ func runJSON(t *testing.T, args []string, req any, out any) {
 	}
 }
 
-// TestInitCreatesManifest is acceptance #1: `cutvec init` creates a project
+// TestInitCreatesManifest is acceptance #1: `daVid init` creates a project
 // directory holding a project.json manifest with the expected shape.
 func TestInitCreatesManifest(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), "proj")
@@ -626,7 +626,7 @@ func TestInitIdempotent(t *testing.T) {
 	}
 }
 
-// TestStatusStateGraph is acceptance #2: `cutvec status --json` returns the state
+// TestStatusStateGraph is acceptance #2: `daVid status --json` returns the state
 // graph — the sources ingested and the artifacts with their done/pending status.
 func TestStatusStateGraph(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), "proj")
@@ -933,7 +933,7 @@ type transcribeReply struct {
 	Planned    bool   `json:"planned"`
 }
 
-// TestTranscribeWordLevel is acceptance #1: `cutvec transcribe <project> --json`
+// TestTranscribeWordLevel is acceptance #1: `daVid transcribe <project> --json`
 // returns a handle, and the transcript at that handle carries word-level
 // start/end times. The project is given as a positional argument (the AC form).
 func TestTranscribeWordLevel(t *testing.T) {
@@ -1090,7 +1090,7 @@ type speakersReply struct {
 	Planned  bool   `json:"planned"`
 }
 
-// TestSpeakersTurns is acceptance #1: `cutvec speakers <project> --json` returns a
+// TestSpeakersTurns is acceptance #1: `daVid speakers <project> --json` returns a
 // handle, and the analysis at that handle carries per-time speaker turns with
 // start/end times. The project is given as a positional argument (the AC form).
 func TestSpeakersTurns(t *testing.T) {
@@ -1365,7 +1365,7 @@ type renderReply struct {
 	Planned  bool   `json:"planned"`
 }
 
-// TestRenderProducesOutput is acceptance #1: `cutvec render <project> --json`
+// TestRenderProducesOutput is acceptance #1: `daVid render <project> --json`
 // returns an output handle that resolves to a video the worker really wrote. The
 // project is given as a positional argument (the AC form) and no quality flag is
 // passed, so it defaults to the proxy tier.
@@ -1789,7 +1789,7 @@ func transcribedFixture(t *testing.T, contents string) (dir, src string) {
 	return dir, src
 }
 
-// TestIndexBuildsLanceDBIndex is acceptance #1: `cutvec index <project> --json`
+// TestIndexBuildsLanceDBIndex is acceptance #1: `daVid index <project> --json`
 // builds a local LanceDB index of the source's transcript segments. The result
 // is a handle to the cached metadata plus the sibling .lance table, and the
 // worker embeds locally (fake worker, no network / API key — acceptance #2).
@@ -1970,7 +1970,7 @@ func indexedFixture(t *testing.T, contents string) (dir, src string) {
 	return dir, src
 }
 
-// TestSearchRanksTimecodedCandidates is acceptance #1: `cutvec search <project>
+// TestSearchRanksTimecodedCandidates is acceptance #1: `daVid search <project>
 // "<query>" --json` returns ranked {start,end,text,score} candidates. The fake
 // worker deliberately returns hits out of score order, so a correct pass proves
 // the core re-ranks them descending by score.
@@ -2210,7 +2210,7 @@ type doctorReport struct {
 	}
 }
 
-// TestDoctorReportsEveryKind proves `cutvec doctor --json` emits a structured
+// TestDoctorReportsEveryKind proves `daVid doctor --json` emits a structured
 // preflight covering every dependency class (binary, worker, package, model),
 // each with an ok/missing status, and that every missing check carries a hint.
 // The report is produced regardless of what the host actually has installed.
@@ -2265,8 +2265,8 @@ func TestDoctorFailsWhenRequiredMissing(t *testing.T) {
 	// Clear every worker env var so the worker checks deterministically miss,
 	// independent of the host's binaries/packages/models.
 	for _, e := range []string{
-		"CUTVEC_FFMPEG_WORKER", "CUTVEC_WHISPER_WORKER", "CUTVEC_INDEX_WORKER",
-		"CUTVEC_SEARCH_WORKER", "CUTVEC_MEDIAPIPE_WORKER", "CUTVEC_MELT_WORKER",
+		"DAVID_FFMPEG_WORKER", "DAVID_WHISPER_WORKER", "DAVID_INDEX_WORKER",
+		"DAVID_SEARCH_WORKER", "DAVID_MEDIAPIPE_WORKER", "DAVID_MELT_WORKER",
 	} {
 		t.Setenv(e, "")
 	}

@@ -1,6 +1,6 @@
-// Command cutvec is the agent-native video-editing CLI and MCP server. Both
+// Command daVid is the agent-native video-editing CLI and MCP server. Both
 // surfaces are driven by one self-describing catalog (see internal/catalog): the
-// CLI dispatches subcommands from it, and `cutvec mcp` will serve the same tools
+// CLI dispatches subcommands from it, and `daVid mcp` will serve the same tools
 // over MCP. IO is JSON on stdout; failures are the structured axerror shape.
 package main
 
@@ -17,12 +17,12 @@ import (
 )
 
 // searchRequest is the JSON document for the `search` tool. Project and Query are
-// required (both may instead be given as positional arguments: `cutvec search
+// required (both may instead be given as positional arguments: `daVid search
 // <project> <query>`). Source names the indexed source to search — its path, id,
 // or hash — and may be omitted when the project holds exactly one source. Limit
 // caps the number of ranked candidates returned (0 = all). Worker/WorkerArgs
 // locate the local search worker executable; when Worker is empty the
-// CUTVEC_SEARCH_WORKER env var is used.
+// DAVID_SEARCH_WORKER env var is used.
 type searchRequest struct {
 	Project    string   `json:"project"`
 	Source     string   `json:"source"`
@@ -70,17 +70,17 @@ func searchCmd(args []string, stdin io.Reader, stdout io.Writer) error {
 	}
 	if req.Project == "" {
 		return axerror.New("input.invalid", "project directory is required").
-			WithHint(`pass it as an argument (cutvec search <project> <query>) or set "project" in the JSON request`)
+			WithHint(`pass it as an argument (daVid search <project> <query>) or set "project" in the JSON request`)
 	}
 	if req.Query == "" {
 		return axerror.New("input.empty", "no query to search for").
-			WithHint(`pass a query argument (cutvec search <project> "<query>") or set "query" in the JSON request`)
+			WithHint(`pass a query argument (daVid search <project> "<query>") or set "query" in the JSON request`)
 	}
 
 	proj := project.Open(req.Project)
 	if !proj.Initialized() {
 		return axerror.New("project.uninitialized", "project is not initialised").
-			WithHint("run `cutvec init` on this directory first")
+			WithHint("run `daVid init` on this directory first")
 	}
 	m, err := proj.Load()
 	if err != nil {
@@ -95,7 +95,7 @@ func searchCmd(args []string, stdin io.Reader, stdout io.Writer) error {
 	// first — a written precondition, like index's own transcript.missing.
 	if !proj.HasIndex(src.Hash) {
 		return axerror.New("index.missing", "source has no index to search").
-			WithHint("run `cutvec index` on this source first")
+			WithHint("run `daVid index` on this source first")
 	}
 
 	if plan {
@@ -169,13 +169,13 @@ func parseSearchArgs(args []string) (proj, query string, plan bool, err error) {
 	default:
 		return "", "", false, axerror.New("input.invalid",
 			"search takes at most a project and a query argument").
-			WithHint(`name one project and one query, e.g. cutvec search ./proj "the hook"`)
+			WithHint(`name one project and one query, e.g. daVid search ./proj "the hook"`)
 	}
 	return proj, query, plan, nil
 }
 
 // resolveSearchWorker builds the local search Worker from the request, falling
-// back to the CUTVEC_SEARCH_WORKER env var for the executable path. With neither
+// back to the DAVID_SEARCH_WORKER env var for the executable path. With neither
 // set there is no worker to run, which is a non-retryable worker.missing.
 func resolveSearchWorker(req searchRequest) (worker.Worker, error) {
 	return resolveNamedWorker(req.Worker, req.WorkerArgs, searchWorkerSpec)

@@ -1,6 +1,6 @@
-// Command cutvec is the agent-native video-editing CLI and MCP server. Both
+// Command daVid is the agent-native video-editing CLI and MCP server. Both
 // surfaces are driven by one self-describing catalog (see internal/catalog): the
-// CLI dispatches subcommands from it, and `cutvec mcp` will serve the same tools
+// CLI dispatches subcommands from it, and `daVid mcp` will serve the same tools
 // over MCP. IO is JSON on stdout; failures are the structured axerror shape.
 package main
 
@@ -22,7 +22,7 @@ import (
 // (and may instead be given as a positional argument). Quality selects the tier
 // ("proxy" or "final") and is overridden by the --proxy/--final flags; it
 // defaults to proxy. Worker/WorkerArgs locate the melt render worker executable;
-// when Worker is empty the CUTVEC_MELT_WORKER env var is used.
+// when Worker is empty the DAVID_MELT_WORKER env var is used.
 type renderRequest struct {
 	Project    string   `json:"project"`
 	Quality    string   `json:"quality"`
@@ -47,7 +47,7 @@ type renderResult struct {
 // quality tier so a re-run is a pure cache hit that invokes no worker. The
 // rendered video lives at the returned handle; the JSON result carries the
 // handle, not the video blob. The project may be given as a positional argument
-// (`cutvec render <project>`) or in the JSON request, and the quality tier via
+// (`daVid render <project>`) or in the JSON request, and the quality tier via
 // --proxy/--final (default proxy) or the request's "quality". --plan reports the
 // handle and cache status without running the worker.
 func renderCmd(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
@@ -67,7 +67,7 @@ func renderCmd(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 	}
 	if req.Project == "" {
 		return axerror.New("input.invalid", "project directory is required").
-			WithHint(`pass it as an argument (cutvec render <project>) or set "project" in the JSON request`)
+			WithHint(`pass it as an argument (daVid render <project>) or set "project" in the JSON request`)
 	}
 	quality, err := resolveQuality(req.Quality)
 	if err != nil {
@@ -77,14 +77,14 @@ func renderCmd(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 	proj := project.Open(req.Project)
 	if !proj.Initialized() {
 		return axerror.New("project.uninitialized", "project is not initialised").
-			WithHint("run `cutvec init` on this directory first")
+			WithHint("run `daVid init` on this directory first")
 	}
 	tlPath := proj.TimelinePath()
 	hash, err := project.HashFile(tlPath)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			return axerror.New("timeline.missing", "project has no built timeline to render").
-				WithHint("run `cutvec timeline` to build a timeline first")
+				WithHint("run `daVid timeline` to build a timeline first")
 		}
 		return axerror.New("project.read", "cannot read timeline: "+err.Error()).AsRetryable()
 	}
@@ -178,7 +178,7 @@ func parseRenderArgs(args []string) (proj, quality string, plan bool, err error)
 			if proj != "" {
 				return "", "", false, axerror.New("input.invalid",
 					"render takes at most one project argument").
-					WithHint("name one project, e.g. `cutvec render ./proj`")
+					WithHint("name one project, e.g. `daVid render ./proj`")
 			}
 			proj = a
 		}
@@ -212,7 +212,7 @@ func resolveQuality(q string) (string, error) {
 }
 
 // resolveMeltWorker builds the melt Worker from the request, falling back to the
-// CUTVEC_MELT_WORKER env var for the executable path. With neither set there is
+// DAVID_MELT_WORKER env var for the executable path. With neither set there is
 // no worker to run, which is a non-retryable worker.missing.
 func resolveMeltWorker(req renderRequest) (worker.Worker, error) {
 	return resolveNamedWorker(req.Worker, req.WorkerArgs, meltWorkerSpec)
