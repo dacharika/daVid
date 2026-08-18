@@ -11,7 +11,10 @@
 // python, or any model on the test host.
 package doctor
 
-import "path/filepath"
+import (
+	"fmt"
+	"path/filepath"
+)
 
 // Check statuses. A check is either satisfied or not; there is no partial state.
 const (
@@ -76,17 +79,22 @@ type Report struct {
 	RequiredMissing int `json:"requiredMissing"`
 	// MissingNames lists the missing required checks, for a one-line summary.
 	MissingNames []string `json:"missingNames,omitempty"`
+	// Recommendations lists advisory migration actions. A non-empty list does
+	// not affect Ok — the environment works, but an upgrade is suggested.
+	Recommendations []string `json:"recommendations,omitempty"`
 }
 
 // spec is one requirement plus how to probe it. probe returns whether the
 // requirement is satisfied and an optional detail string (a resolved path or a
-// short note) to surface either way.
+// short note) to surface either way. advisory, when set, is called after the
+// probe and returns a non-empty migration recommendation when action is needed.
 type spec struct {
 	name     string
 	kind     string
 	required bool
 	hint     string
 	probe    func(p Probe) (ok bool, detail string)
+	advisory func(p Probe) string
 }
 
 // Run probes the real (injected) environment and returns the full report.
@@ -115,6 +123,11 @@ func evaluate(list []spec, p Probe) Report {
 			}
 		}
 		rep.Checks = append(rep.Checks, c)
+		if s.advisory != nil {
+			if rec := s.advisory(p); rec != "" {
+				rep.Recommendations = append(rep.Recommendations, rec)
+			}
+		}
 	}
 	return rep
 }
@@ -238,9 +251,52 @@ func specs() []spec {
 			"Library/Application Support/podcli/models/ggml-base.bin",
 			"/opt/homebrew/share/whisper-cpp/ggml-base.bin",
 			".cache/whisper/ggml-base.bin"),
-		model("mediapipe face_landmarker", "CUTVEC_FACE_LANDMARKER",
-			"set CUTVEC_FACE_LANDMARKER, or download face_landmarker.task from https://storage.googleapis.com/mediapipe-models/face_landmarker/",
-			"Downloads/podcast_edit/models/face_landmarker.task",
-			"Library/Application Support/cutvec/models/face_landmarker.task"),
+		faceLandmarkerSpec(),
+	}
+}
+
+// faceLandmarkerSpec probes for the MediaPipe face_landmarker.task model,
+// checking the canonical daVid path first and falling back to the legacy cutvec
+// path. When only the legacy path exists the spec emits a migration
+// recommendation so the caller can surface it without failing the preflight.
+func faceLandmarkerSpec() spec {
+	const (
+		newPath    = "Library/Application Support/daVid/models/face_landmarker.task"
+		legacyPath = "Library/Application Support/cutvec/models/face_landmarker.task"
+		altPath    = "Downloads/podcast_edit/models/face_landmarker.task"
+		env        = "CUTVEC_FACE_LANDMARKER"
+		hint       = "set CUTVEC_FACE_LANDMARKER, or download face_landmarker.task from https://storage.googleapis.com/mediapipe-models/face_landmarker/"
+	)
+	return spec{
+		name: "mediapipe face_landmarker", kind: KindModel, required: true, hint: hint,
+		probe: func(p Probe) (bool, string) {
+			if v := p.Getenv(env); v != "" {
+				if p.FileExists(v) {
+					return true, v
+				}
+				return false, v
+			}
+			for _, rel := range []string{newPath, altPath, legacyPath} {
+				full := filepath.Join(p.Home(), rel)
+				if p.FileExists(full) {
+					return true, full
+				}
+			}
+			return false, ""
+		},
+		advisory: func(p Probe) string {
+			if p.Getenv(env) != "" {
+				return ""
+			}
+			newFull := filepath.Join(p.Home(), newPath)
+			legacyFull := filepath.Join(p.Home(), legacyPath)
+			if !p.FileExists(newFull) && p.FileExists(legacyFull) {
+				return fmt.Sprintf(
+					"migrate face_landmarker.task: copy %s to %s — the cutvec support path is deprecated in favour of daVid",
+					legacyFull, newFull,
+				)
+			}
+			return ""
+		},
 	}
 }

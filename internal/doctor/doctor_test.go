@@ -198,6 +198,94 @@ func TestOptionalMissDoesNotFailPreflight(t *testing.T) {
 	}
 }
 
+// TestFaceLandmarkerFoundAtNewDaVidPath verifies the primary lookup path.
+func TestFaceLandmarkerFoundAtNewDaVidPath(t *testing.T) {
+	f := fullyProvisioned()
+	delete(f.env, "CUTVEC_FACE_LANDMARKER")
+	newPath := filepath.Join(f.home, "Library/Application Support/daVid/models/face_landmarker.task")
+	f.files[newPath] = true
+	rep := Run(f)
+	c := find(t, rep, "mediapipe face_landmarker")
+	if c.Status != StatusOK {
+		t.Fatalf("face_landmarker should resolve at daVid path, got %q (detail=%q)", c.Status, c.Detail)
+	}
+	if c.Detail != newPath {
+		t.Fatalf("detail should be the daVid path, got %q", c.Detail)
+	}
+}
+
+// TestFaceLandmarkerLegacyFallback verifies the cutvec legacy path is used when
+// the new daVid path does not exist.
+func TestFaceLandmarkerLegacyFallback(t *testing.T) {
+	f := fullyProvisioned()
+	delete(f.env, "CUTVEC_FACE_LANDMARKER")
+	legacyPath := filepath.Join(f.home, "Library/Application Support/cutvec/models/face_landmarker.task")
+	f.files[legacyPath] = true
+	rep := Run(f)
+	c := find(t, rep, "mediapipe face_landmarker")
+	if c.Status != StatusOK {
+		t.Fatalf("face_landmarker should resolve at legacy cutvec path, got %q (detail=%q)", c.Status, c.Detail)
+	}
+	if c.Detail != legacyPath {
+		t.Fatalf("detail should be the legacy path, got %q", c.Detail)
+	}
+}
+
+// TestFaceLandmarkerMissingBothPaths verifies the check fails when neither path
+// exists and no env var is set.
+func TestFaceLandmarkerMissingBothPaths(t *testing.T) {
+	f := fullyProvisioned()
+	delete(f.env, "CUTVEC_FACE_LANDMARKER")
+	// ensure neither well-known path is present
+	delete(f.files, filepath.Join(f.home, "Library/Application Support/daVid/models/face_landmarker.task"))
+	delete(f.files, filepath.Join(f.home, "Library/Application Support/cutvec/models/face_landmarker.task"))
+	rep := Run(f)
+	c := find(t, rep, "mediapipe face_landmarker")
+	if c.Status != StatusMissing {
+		t.Fatalf("face_landmarker should be missing when both paths absent, got %q", c.Status)
+	}
+	if c.Hint == "" {
+		t.Fatal("missing face_landmarker should carry an install hint")
+	}
+}
+
+// TestMigrationRecommendationEmittedWhenOnlyLegacyExists verifies that the
+// doctor report carries a migration recommendation when only the legacy cutvec
+// path exists and the new daVid path does not.
+func TestMigrationRecommendationEmittedWhenOnlyLegacyExists(t *testing.T) {
+	f := fullyProvisioned()
+	delete(f.env, "CUTVEC_FACE_LANDMARKER")
+	legacyPath := filepath.Join(f.home, "Library/Application Support/cutvec/models/face_landmarker.task")
+	f.files[legacyPath] = true
+	rep := Run(f)
+	if len(rep.Recommendations) == 0 {
+		t.Fatal("expected at least one migration recommendation, got none")
+	}
+	found := false
+	for _, r := range rep.Recommendations {
+		if len(r) > 0 {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatal("migration recommendation is empty")
+	}
+}
+
+// TestNoMigrationRecommendationWhenNewPathExists verifies no spurious
+// recommendation is emitted when the new daVid path is present.
+func TestNoMigrationRecommendationWhenNewPathExists(t *testing.T) {
+	f := fullyProvisioned()
+	delete(f.env, "CUTVEC_FACE_LANDMARKER")
+	newPath := filepath.Join(f.home, "Library/Application Support/daVid/models/face_landmarker.task")
+	f.files[newPath] = true
+	rep := Run(f)
+	if len(rep.Recommendations) != 0 {
+		t.Fatalf("expected no recommendations when new path exists, got %v", rep.Recommendations)
+	}
+}
+
 func find(t *testing.T, rep Report, name string) Check {
 	t.Helper()
 	for _, c := range rep.Checks {
