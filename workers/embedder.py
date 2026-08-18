@@ -16,12 +16,19 @@ import os
 
 from cutvec_worker import WorkerError, log
 
+
 def _embed_model() -> str:
     if v := os.environ.get("DAVID_EMBED_MODEL"):
         return v
     if v := os.environ.get("CUTVEC_EMBED_MODEL"):
-        log({"level": "warn", "msg": "CUTVEC_EMBED_MODEL is deprecated, rename to DAVID_EMBED_MODEL",
-             "deprecated": "CUTVEC_EMBED_MODEL", "canonical": "DAVID_EMBED_MODEL"})
+        log(
+            {
+                "level": "warn",
+                "msg": "CUTVEC_EMBED_MODEL is deprecated, rename to DAVID_EMBED_MODEL",
+                "deprecated": "CUTVEC_EMBED_MODEL",
+                "canonical": "DAVID_EMBED_MODEL",
+            }
+        )
         return v
     return "BAAI/bge-small-en-v1.5"
 

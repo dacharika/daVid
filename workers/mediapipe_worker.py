@@ -54,8 +54,14 @@ def find_model() -> str:
     if not env:
         legacy = os.environ.get("CUTVEC_FACE_LANDMARKER")
         if legacy:
-            log({"level": "warn", "msg": "CUTVEC_FACE_LANDMARKER is deprecated, rename to DAVID_FACE_LANDMARKER",
-                 "deprecated": "CUTVEC_FACE_LANDMARKER", "canonical": "DAVID_FACE_LANDMARKER"})
+            log(
+                {
+                    "level": "warn",
+                    "msg": "CUTVEC_FACE_LANDMARKER is deprecated, rename to DAVID_FACE_LANDMARKER",
+                    "deprecated": "CUTVEC_FACE_LANDMARKER",
+                    "canonical": "DAVID_FACE_LANDMARKER",
+                }
+            )
             env = legacy
     if env and Path(env).exists():
         return env

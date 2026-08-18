@@ -35,8 +35,14 @@ def find_model() -> str:
     if not env:
         legacy = os.environ.get("CUTVEC_WHISPER_MODEL")
         if legacy:
-            log({"level": "warn", "msg": "CUTVEC_WHISPER_MODEL is deprecated, rename to DAVID_WHISPER_MODEL",
-                 "deprecated": "CUTVEC_WHISPER_MODEL", "canonical": "DAVID_WHISPER_MODEL"})
+            log(
+                {
+                    "level": "warn",
+                    "msg": "CUTVEC_WHISPER_MODEL is deprecated, rename to DAVID_WHISPER_MODEL",
+                    "deprecated": "CUTVEC_WHISPER_MODEL",
+                    "canonical": "DAVID_WHISPER_MODEL",
+                }
+            )
             env = legacy
     if env:
         if not Path(env).exists():
