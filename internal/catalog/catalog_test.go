@@ -18,7 +18,7 @@ func TestDefaultSeedsDescribe(t *testing.T) {
 }
 
 // TestDefaultMarshalsToJSON guards that the catalog is emittable as JSON, the
-// form `cutvec describe` returns.
+// form `daVid describe` returns.
 func TestDefaultMarshalsToJSON(t *testing.T) {
 	if _, err := json.Marshal(Default()); err != nil {
 		t.Fatalf("marshal catalog: %v", err)
@@ -47,7 +47,7 @@ func TestEveryToolIsFullyTyped(t *testing.T) {
 }
 
 // TestLookup resolves known and unknown commands, the operation behind
-// `cutvec schema <cmd>`.
+// `daVid schema <cmd>`.
 func TestLookup(t *testing.T) {
 	c := Default()
 	if _, ok := c.Lookup("describe"); !ok {

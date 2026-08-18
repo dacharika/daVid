@@ -174,7 +174,7 @@ func TestWorkerReportedError(t *testing.T) {
 
 // TestMissingWorker maps a non-existent executable to worker.missing.
 func TestMissingWorker(t *testing.T) {
-	w := Worker{Path: "/nonexistent/cutvec-worker-does-not-exist"}
+	w := Worker{Path: "/nonexistent/david-worker-does-not-exist"}
 	_, err := w.Invoke(context.Background(), Request{Op: "noop"})
 	ax := asAxError(t, err)
 	if ax.Code != "worker.missing" {

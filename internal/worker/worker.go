@@ -1,4 +1,4 @@
-// Package worker defines the boundary to cutvec's Python ML workers. Each worker
+// Package worker defines the boundary to daVid's Python ML workers. Each worker
 // is a subprocess that speaks a versioned JSON contract over stdin/stdout — one
 // Request in, one Response out — keeping the ML stack (whisper, mediapipe,
 // embeddings, MLT tooling) out of the Go core and behind a testable interface.
@@ -120,7 +120,7 @@ func (w Worker) Invoke(ctx context.Context, req Request) (*Response, error) {
 	if resp.Version != ContractVersion {
 		return resp, axerror.New("worker.version",
 			fmt.Sprintf("worker speaks protocol version %d, core speaks %d", resp.Version, ContractVersion)).
-			WithHint("upgrade the worker or the cutvec core so both speak the same contract version")
+			WithHint("upgrade the worker or the daVid core so both speak the same contract version")
 	}
 	if resp.Error != nil {
 		return resp, resp.Error.toAxError()

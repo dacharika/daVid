@@ -1,4 +1,4 @@
-// Package axerror defines cutvec's structured error type. Every failure an
+// Package axerror defines daVid's structured error type. Every failure an
 // agent can observe is reported as an Error carrying a stable machine code, a
 // remediation hint, and whether retrying could plausibly succeed. This is the
 // error half of the AX contract: an agent branches on Code, never on prose.

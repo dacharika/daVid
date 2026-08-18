@@ -1,7 +1,7 @@
-// Package catalog is cutvec's single self-describing tool catalog. One catalog
+// Package catalog is daVid's single self-describing tool catalog. One catalog
 // backs BOTH the JSON CLI and the MCP server so the two surfaces cannot drift:
 // each Tool carries its name, a one-line summary, and JSON Schemas for its
-// input and output. `cutvec describe` emits this catalog verbatim.
+// input and output. `daVid describe` emits this catalog verbatim.
 package catalog
 
 // Tool is one agent-callable operation, described well enough to generate both
@@ -21,14 +21,14 @@ type Schema map[string]any
 // an agent knows exactly which dialect to validate against.
 const jsonSchemaDialect = "https://json-schema.org/draft/2020-12/schema"
 
-// Catalog is the ordered set of tools cutvec exposes.
+// Catalog is the ordered set of tools daVid exposes.
 type Catalog struct {
 	Version string `json:"version"`
 	Tools   []Tool `json:"tools"`
 }
 
 // Lookup returns the tool with the given name and whether it was found. This is
-// how `cutvec schema <cmd>` resolves a command to its typed IO.
+// how `daVid schema <cmd>` resolves a command to its typed IO.
 func (c Catalog) Lookup(name string) (Tool, bool) {
 	for _, t := range c.Tools {
 		if t.Name == name {
@@ -51,7 +51,7 @@ func (c Catalog) Names() []string {
 // JSONSchema returns a self-contained JSON Schema document for the tool: a
 // draft 2020-12 schema titled by the tool whose `input` and `output` properties
 // hold the schemas the caller must satisfy and can expect back. This is the
-// document `cutvec schema <cmd>` emits.
+// document `daVid schema <cmd>` emits.
 func (t Tool) JSONSchema() Schema {
 	input := t.InputSchema
 	if input == nil {
@@ -88,7 +88,7 @@ func Default() Catalog {
 		Tools: []Tool{
 			{
 				Name:         "describe",
-				Summary:      "Emit the cutvec tool catalog and JSON Schemas.",
+				Summary:      "Emit the daVid tool catalog and JSON Schemas.",
 				InputSchema:  objectSchema(),
 				OutputSchema: objectSchema(),
 			},
@@ -124,7 +124,7 @@ func Default() Catalog {
 						"project":    map[string]any{"type": "string", "description": "the project directory"},
 						"source":     map[string]any{"type": "string", "description": "path to the media file to ingest"},
 						"rehash":     map[string]any{"type": "boolean", "description": "recompute the full content hash instead of trusting the recorded fingerprint (size, mtime, both 8MB ends). Only needed if a file was changed without its mtime moving."},
-						"worker":     map[string]any{"type": "string", "description": "ffmpeg worker executable that probes the source and builds its proxy and audio track; defaults to the CUTVEC_FFMPEG_WORKER env var. When unset the source is ingested without a probe or derived media."},
+						"worker":     map[string]any{"type": "string", "description": "ffmpeg worker executable that probes the source and builds its proxy and audio track; defaults to the DAVID_FFMPEG_WORKER env var. When unset the source is ingested without a probe or derived media."},
 						"workerArgs": map[string]any{"type": "array", "description": "leading arguments for the ffmpeg worker executable", "items": map[string]any{"type": "string"}},
 					},
 				},
@@ -191,7 +191,7 @@ func Default() Catalog {
 					"properties": map[string]any{
 						"project":    map[string]any{"type": "string", "description": "the project directory (also accepted as a positional argument)"},
 						"source":     map[string]any{"type": "string", "description": "path, id, or hash of the ingested source to transcribe; optional when the project has exactly one source"},
-						"worker":     map[string]any{"type": "string", "description": "path to the whisper worker executable; defaults to the CUTVEC_WHISPER_WORKER env var"},
+						"worker":     map[string]any{"type": "string", "description": "path to the whisper worker executable; defaults to the DAVID_WHISPER_WORKER env var"},
 						"workerArgs": map[string]any{"type": "array", "description": "fixed leading arguments passed to the worker", "items": map[string]any{"type": "string"}},
 					},
 				},
@@ -216,7 +216,7 @@ func Default() Catalog {
 					"properties": map[string]any{
 						"project":    map[string]any{"type": "string", "description": "the project directory (also accepted as a positional argument)"},
 						"source":     map[string]any{"type": "string", "description": "path, id, or hash of the ingested source to index; optional when the project has exactly one source"},
-						"worker":     map[string]any{"type": "string", "description": "path to the local embedding worker executable; defaults to the CUTVEC_INDEX_WORKER env var"},
+						"worker":     map[string]any{"type": "string", "description": "path to the local embedding worker executable; defaults to the DAVID_INDEX_WORKER env var"},
 						"workerArgs": map[string]any{"type": "array", "description": "fixed leading arguments passed to the worker", "items": map[string]any{"type": "string"}},
 					},
 				},
@@ -245,7 +245,7 @@ func Default() Catalog {
 						"query":      map[string]any{"type": "string", "description": "the natural-language query (also accepted as the second positional argument)"},
 						"source":     map[string]any{"type": "string", "description": "path, id, or hash of the indexed source to search; optional when the project has exactly one source"},
 						"limit":      map[string]any{"type": "integer", "description": "cap on the number of ranked candidates returned; 0 or omitted returns all"},
-						"worker":     map[string]any{"type": "string", "description": "path to the local search worker executable; defaults to the CUTVEC_SEARCH_WORKER env var"},
+						"worker":     map[string]any{"type": "string", "description": "path to the local search worker executable; defaults to the DAVID_SEARCH_WORKER env var"},
 						"workerArgs": map[string]any{"type": "array", "description": "fixed leading arguments passed to the worker", "items": map[string]any{"type": "string"}},
 					},
 				},
@@ -282,7 +282,7 @@ func Default() Catalog {
 					"properties": map[string]any{
 						"project":    map[string]any{"type": "string", "description": "the project directory (also accepted as a positional argument)"},
 						"source":     map[string]any{"type": "string", "description": "path, id, or hash of the ingested source to analyse; optional when the project has exactly one source"},
-						"worker":     map[string]any{"type": "string", "description": "path to the mediapipe worker executable; defaults to the CUTVEC_MEDIAPIPE_WORKER env var"},
+						"worker":     map[string]any{"type": "string", "description": "path to the mediapipe worker executable; defaults to the DAVID_MEDIAPIPE_WORKER env var"},
 						"workerArgs": map[string]any{"type": "array", "description": "fixed leading arguments passed to the worker", "items": map[string]any{"type": "string"}},
 					},
 				},
@@ -315,9 +315,9 @@ func Default() Catalog {
 						"push":             map[string]any{"type": "number", "description": "slowly magnify the framing across each short (0.12 = 12% tighter by the end) so a talking head does not sit still; 0 (default) leaves it locked"},
 						"leftCentre":       map[string]any{"type": "number", "description": "normalised horizontal centre of the left seat; defaults to 0.28"},
 						"rightCentre":      map[string]any{"type": "number", "description": "normalised horizontal centre of the right seat; defaults to 0.72"},
-						"searchWorker":     map[string]any{"type": "string", "description": "path to the search worker; defaults to the CUTVEC_SEARCH_WORKER env var"},
+						"searchWorker":     map[string]any{"type": "string", "description": "path to the search worker; defaults to the DAVID_SEARCH_WORKER env var"},
 						"searchWorkerArgs": map[string]any{"type": "array", "description": "fixed leading arguments for the search worker", "items": map[string]any{"type": "string"}},
-						"renderWorker":     map[string]any{"type": "string", "description": "path to the melt render worker; defaults to the CUTVEC_MELT_WORKER env var"},
+						"renderWorker":     map[string]any{"type": "string", "description": "path to the melt render worker; defaults to the DAVID_MELT_WORKER env var"},
 						"renderWorkerArgs": map[string]any{"type": "array", "description": "fixed leading arguments for the render worker", "items": map[string]any{"type": "string"}},
 					},
 				},
@@ -388,7 +388,7 @@ func Default() Catalog {
 						"query":      map[string]any{"type": "string", "description": "substring to search filter names for, e.g. 'denoise' or 'color' (also accepted as the first positional argument); omit to list everything"},
 						"name":       map[string]any{"type": "string", "description": "exact filter name to describe, e.g. 'avfilter.curves'; returns its full parameter list"},
 						"limit":      map[string]any{"type": "integer", "description": "cap on filters returned; defaults to 40. Parameters are only expanded for focused result sets"},
-						"worker":     map[string]any{"type": "string", "description": "path to the melt worker; defaults to the CUTVEC_MELT_WORKER env var"},
+						"worker":     map[string]any{"type": "string", "description": "path to the melt worker; defaults to the DAVID_MELT_WORKER env var"},
 						"workerArgs": map[string]any{"type": "array", "description": "fixed leading arguments for the worker", "items": map[string]any{"type": "string"}},
 					},
 				},
@@ -421,7 +421,7 @@ func Default() Catalog {
 						},
 						"count":   map[string]any{"type": "integer", "description": "how many filters matched the query"},
 						"total":   map[string]any{"type": "integer", "description": "how many filters MLT has registered in total"},
-						"presets": map[string]any{"type": "array", "description": "cutvec's named filter chains, usable directly as a timeline effect", "items": map[string]any{"type": "string"}},
+						"presets": map[string]any{"type": "array", "description": "daVid's named filter chains, usable directly as a timeline effect", "items": map[string]any{"type": "string"}},
 					},
 				},
 			},
@@ -440,7 +440,7 @@ func Default() Catalog {
 						"dissolve":         map[string]any{"type": "number", "description": "cross-fade between shots over this many seconds; 0 (default) is a hard cut. Must be shorter than every shot, or the edit is refused rather than blending three pictures at once"},
 						"leftCentre":       map[string]any{"type": "number", "description": "normalised horizontal centre of the left seat; defaults to 0.28"},
 						"rightCentre":      map[string]any{"type": "number", "description": "normalised horizontal centre of the right seat; defaults to 0.72"},
-						"renderWorker":     map[string]any{"type": "string", "description": "path to the melt render worker; defaults to the CUTVEC_MELT_WORKER env var"},
+						"renderWorker":     map[string]any{"type": "string", "description": "path to the melt render worker; defaults to the DAVID_MELT_WORKER env var"},
 						"renderWorkerArgs": map[string]any{"type": "array", "description": "fixed leading arguments for the render worker", "items": map[string]any{"type": "string"}},
 					},
 				},
@@ -522,7 +522,7 @@ func Default() Catalog {
 						},
 						"effects": map[string]any{
 							"type":        "array",
-							"description": "MLT filters attached to the timeline, applied in order. Each effect is either a named preset or one MLT service — run `cutvec filters` to discover services and their parameters.",
+							"description": "MLT filters attached to the timeline, applied in order. Each effect is either a named preset or one MLT service — run `daVid filters` to discover services and their parameters.",
 							"items": map[string]any{
 								"type": "object",
 								"properties": map[string]any{
@@ -573,7 +573,7 @@ func Default() Catalog {
 					"properties": map[string]any{
 						"project":    map[string]any{"type": "string", "description": "the project directory whose timeline to render (also accepted as a positional argument)"},
 						"quality":    map[string]any{"type": "string", "enum": []any{"proxy", "final"}, "description": "render tier; proxy is a fast draft, final is full quality. Overridden by --proxy/--final; defaults to proxy"},
-						"worker":     map[string]any{"type": "string", "description": "path to the melt render worker executable; defaults to the CUTVEC_MELT_WORKER env var"},
+						"worker":     map[string]any{"type": "string", "description": "path to the melt render worker executable; defaults to the DAVID_MELT_WORKER env var"},
 						"workerArgs": map[string]any{"type": "array", "description": "fixed leading arguments passed to the worker", "items": map[string]any{"type": "string"}},
 					},
 				},

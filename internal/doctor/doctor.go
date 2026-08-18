@@ -1,4 +1,4 @@
-// Package doctor preflights cutvec's runtime environment in one pass: every
+// Package doctor preflights daVid's runtime environment in one pass: every
 // external binary, python worker, ML package, and model file the podcast-edit
 // pipeline depends on is probed and reported as ok or missing with an actionable
 // install hint. It is pure inspection — no worker is invoked and no project is
@@ -210,18 +210,18 @@ func specs() []spec {
 		binary("melt", "brew install mlt (provides melt, the MLT XML renderer)"),
 
 		// Python worker executables, configured per the env vars the CLI reads.
-		worker("ffmpeg worker", "CUTVEC_FFMPEG_WORKER",
-			"set CUTVEC_FFMPEG_WORKER to the ffmpeg probe worker (see workers/ffmpeg_worker.py)"),
-		worker("whisper worker", "CUTVEC_WHISPER_WORKER",
-			"set CUTVEC_WHISPER_WORKER to the whisper transcribe worker (see workers/whisper_worker.py)"),
-		worker("index worker", "CUTVEC_INDEX_WORKER",
-			"set CUTVEC_INDEX_WORKER to the embedding index worker (see workers/index_worker.py)"),
-		worker("search worker", "CUTVEC_SEARCH_WORKER",
-			"set CUTVEC_SEARCH_WORKER to the vector search worker (see workers/search_worker.py)"),
-		worker("mediapipe worker", "CUTVEC_MEDIAPIPE_WORKER",
-			"set CUTVEC_MEDIAPIPE_WORKER to the active-speaker worker (see workers/mediapipe_worker.py)"),
-		worker("melt worker", "CUTVEC_MELT_WORKER",
-			"set CUTVEC_MELT_WORKER to the melt render worker (see workers/melt_worker.py)"),
+		worker("ffmpeg worker", "DAVID_FFMPEG_WORKER",
+			"set DAVID_FFMPEG_WORKER to the ffmpeg probe worker (see workers/ffmpeg_worker.py)"),
+		worker("whisper worker", "DAVID_WHISPER_WORKER",
+			"set DAVID_WHISPER_WORKER to the whisper transcribe worker (see workers/whisper_worker.py)"),
+		worker("index worker", "DAVID_INDEX_WORKER",
+			"set DAVID_INDEX_WORKER to the embedding index worker (see workers/index_worker.py)"),
+		worker("search worker", "DAVID_SEARCH_WORKER",
+			"set DAVID_SEARCH_WORKER to the vector search worker (see workers/search_worker.py)"),
+		worker("mediapipe worker", "DAVID_MEDIAPIPE_WORKER",
+			"set DAVID_MEDIAPIPE_WORKER to the active-speaker worker (see workers/mediapipe_worker.py)"),
+		worker("melt worker", "DAVID_MELT_WORKER",
+			"set DAVID_MELT_WORKER to the melt render worker (see workers/melt_worker.py)"),
 
 		// Python packages the ML workers import.
 		pkg("lancedb", "pip install lancedb", "lancedb"),
@@ -229,18 +229,18 @@ func specs() []spec {
 		pkg("numpy", "pip install numpy", "numpy"),
 		pkg("opencv-python", "pip install opencv-python", "cv2"),
 		pkg("embedding backend (fastembed|sentence-transformers)",
-			"pip install fastembed (or sentence-transformers) — cutvec embeds locally, no API key required",
+			"pip install fastembed (or sentence-transformers) — daVid embeds locally, no API key required",
 			"fastembed", "sentence_transformers"),
 
 		// Model files the transcribe and speakers workers load.
-		model("whisper ggml model", "CUTVEC_WHISPER_MODEL",
-			"set CUTVEC_WHISPER_MODEL to a ggml-*.bin, e.g. from https://huggingface.co/ggerganov/whisper.cpp",
+		model("whisper ggml model", "DAVID_WHISPER_MODEL",
+			"set DAVID_WHISPER_MODEL to a ggml-*.bin, e.g. from https://huggingface.co/ggerganov/whisper.cpp",
 			"Library/Application Support/podcli/models/ggml-base.bin",
 			"/opt/homebrew/share/whisper-cpp/ggml-base.bin",
 			".cache/whisper/ggml-base.bin"),
-		model("mediapipe face_landmarker", "CUTVEC_FACE_LANDMARKER",
-			"set CUTVEC_FACE_LANDMARKER, or download face_landmarker.task from https://storage.googleapis.com/mediapipe-models/face_landmarker/",
+		model("mediapipe face_landmarker", "DAVID_FACE_LANDMARKER",
+			"set DAVID_FACE_LANDMARKER, or download face_landmarker.task from https://storage.googleapis.com/mediapipe-models/face_landmarker/",
 			"Downloads/podcast_edit/models/face_landmarker.task",
-			"Library/Application Support/cutvec/models/face_landmarker.task"),
+			"Library/Application Support/daVid/models/face_landmarker.task"),
 	}
 }
