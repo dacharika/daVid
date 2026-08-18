@@ -30,7 +30,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from cutvec_worker import WorkerError, log, need, require_tool, run_tool, serve_ops
+from david_worker import WorkerError, log, need, require_tool, run_tool, serve_ops
 
 
 def parse_rate(rate: str) -> float:

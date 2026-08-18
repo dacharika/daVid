@@ -28,7 +28,7 @@ import os
 import tempfile
 from pathlib import Path
 
-from cutvec_worker import WorkerError, log, need, require_module, require_tool, run_tool, serve
+from david_worker import WorkerError, log, need, require_module, require_tool, run_tool, serve
 
 PROXY_W, PROXY_FPS = 960, 15  # analysis resolution / rate
 UPSCALE = 2  # half-crop upscale before detection

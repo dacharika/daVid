@@ -18,3 +18,4 @@ agents and operators configure the tool with DAVID_* variables while existing CU
 - [ ] Python workers (embedder.py, mediapipe_worker.py, whisper_worker.py) read DAVID_* first, fall back to CUTVEC_* with a warning
 - [ ] go build ./... and go test ./... -count=1 both exit 0; grep for raw CUTVEC_ in Go sources shows only compatibility fallback sites
 ## Log
+- 2026-08-17T12:34:28Z claimed by a-r862mrr8mk

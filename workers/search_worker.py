@@ -18,7 +18,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import embedder
-from cutvec_worker import WorkerError, log, need, require_module, serve_ops
+from david_worker import WorkerError, log, need, require_module, serve_ops
 
 DEFAULT_LIMIT = 10
 

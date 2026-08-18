@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import os
 
-from cutvec_worker import WorkerError, log
+from david_worker import WorkerError, log
 
 
 def _embed_model() -> str:
