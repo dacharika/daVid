@@ -9,7 +9,7 @@ whisper.cpp needs 16 kHz mono PCM, so the media is first decoded with ffmpeg.
 Passing `-ml 1` makes whisper emit one segment per word, which is how the
 word-level start/end times the captions and search index depend on are obtained.
 
-Model lookup order: CUTVEC_WHISPER_MODEL, then the ggml models podcli/whisper.cpp
+Model lookup order: DAVID_WHISPER_MODEL, then CUTVEC_WHISPER_MODEL (deprecated), then the ggml models podcli/whisper.cpp
 commonly install under ~/Library/Application Support/podcli/models and
 /opt/homebrew/share/whisper-cpp.
 """
@@ -21,7 +21,7 @@ import os
 import tempfile
 from pathlib import Path
 
-from cutvec_worker import WorkerError, log, need, require_tool, run_tool, serve
+from david_worker import WorkerError, log, need, require_tool, run_tool, serve
 
 MODEL_CANDIDATES = [
     Path.home() / "Library/Application Support/podcli/models/ggml-base.bin",
@@ -31,13 +31,25 @@ MODEL_CANDIDATES = [
 
 
 def find_model() -> str:
-    env = os.environ.get("CUTVEC_WHISPER_MODEL")
+    env = os.environ.get("DAVID_WHISPER_MODEL")
+    if not env:
+        legacy = os.environ.get("CUTVEC_WHISPER_MODEL")
+        if legacy:
+            log(
+                {
+                    "level": "warn",
+                    "msg": "CUTVEC_WHISPER_MODEL is deprecated, rename to DAVID_WHISPER_MODEL",
+                    "deprecated": "CUTVEC_WHISPER_MODEL",
+                    "canonical": "DAVID_WHISPER_MODEL",
+                }
+            )
+            env = legacy
     if env:
         if not Path(env).exists():
             raise WorkerError(
                 "worker.missing",
-                f"CUTVEC_WHISPER_MODEL points at a file that does not exist: {env}",
-                hint="set CUTVEC_WHISPER_MODEL to a ggml whisper model (.bin)",
+                f"DAVID_WHISPER_MODEL points at a file that does not exist: {env}",
+                hint="set DAVID_WHISPER_MODEL to a ggml whisper model (.bin)",
             )
         return env
     for cand in MODEL_CANDIDATES:
@@ -46,7 +58,7 @@ def find_model() -> str:
     raise WorkerError(
         "worker.missing",
         "no ggml whisper model found",
-        hint="set CUTVEC_WHISPER_MODEL to a ggml-*.bin, e.g. from "
+        hint="set DAVID_WHISPER_MODEL to a ggml-*.bin, e.g. from "
         "https://huggingface.co/ggerganov/whisper.cpp",
     )
 

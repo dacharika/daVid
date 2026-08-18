@@ -163,14 +163,18 @@ func pkg(display, hint string, modules ...string) spec {
 }
 
 // worker builds a spec that is satisfied when the env var naming the worker
-// executable is set and points at a file that exists. Workers are the seam to
-// the python ML stack; a preflight that a pipeline can actually reach them is
-// exactly what saves a mid-run failure.
-func worker(display, env, hint string) spec {
+// executable is set and points at a file that exists. canonicalEnv is the
+// DAVID_* var; legacyEnv is the deprecated CUTVEC_* var accepted during the
+// deprecation window. DAVID_* wins when both are set. The Probe seam is used
+// for both lookups so the whole check is testable without touching os.Getenv.
+func worker(display, canonicalEnv, legacyEnv, hint string) spec {
 	return spec{
 		name: display, kind: KindWorker, required: true, hint: hint,
 		probe: func(p Probe) (bool, string) {
-			path := p.Getenv(env)
+			path := p.Getenv(canonicalEnv)
+			if path == "" {
+				path = p.Getenv(legacyEnv)
+			}
 			if path == "" {
 				return false, ""
 			}
@@ -183,13 +187,18 @@ func worker(display, env, hint string) spec {
 }
 
 // model builds a spec satisfied when the model file is found, checked first at
-// the path in env (when set) and then at each well-known install location under
-// the user's home directory.
-func model(display, env, hint string, relPaths ...string) spec {
+// the path in canonicalEnv (DAVID_*), then legacyEnv (CUTVEC_*, deprecation
+// window), and finally at each well-known install location under the user's
+// home directory. The Probe seam is used for both lookups.
+func model(display, canonicalEnv, legacyEnv, hint string, relPaths ...string) spec {
 	return spec{
 		name: display, kind: KindModel, required: true, hint: hint,
 		probe: func(p Probe) (bool, string) {
-			if v := p.Getenv(env); v != "" {
+			v := p.Getenv(canonicalEnv)
+			if v == "" {
+				v = p.Getenv(legacyEnv)
+			}
+			if v != "" {
 				if p.FileExists(v) {
 					return true, v
 				}
@@ -223,18 +232,18 @@ func specs() []spec {
 		binary("melt", "brew install mlt (provides melt, the MLT XML renderer)"),
 
 		// Python worker executables, configured per the env vars the CLI reads.
-		worker("ffmpeg worker", "CUTVEC_FFMPEG_WORKER",
-			"set CUTVEC_FFMPEG_WORKER to the ffmpeg probe worker (see workers/ffmpeg_worker.py)"),
-		worker("whisper worker", "CUTVEC_WHISPER_WORKER",
-			"set CUTVEC_WHISPER_WORKER to the whisper transcribe worker (see workers/whisper_worker.py)"),
-		worker("index worker", "CUTVEC_INDEX_WORKER",
-			"set CUTVEC_INDEX_WORKER to the embedding index worker (see workers/index_worker.py)"),
-		worker("search worker", "CUTVEC_SEARCH_WORKER",
-			"set CUTVEC_SEARCH_WORKER to the vector search worker (see workers/search_worker.py)"),
-		worker("mediapipe worker", "CUTVEC_MEDIAPIPE_WORKER",
-			"set CUTVEC_MEDIAPIPE_WORKER to the active-speaker worker (see workers/mediapipe_worker.py)"),
-		worker("melt worker", "CUTVEC_MELT_WORKER",
-			"set CUTVEC_MELT_WORKER to the melt render worker (see workers/melt_worker.py)"),
+		worker("ffmpeg worker", "DAVID_FFMPEG_WORKER", "CUTVEC_FFMPEG_WORKER",
+			"set DAVID_FFMPEG_WORKER to the ffmpeg probe worker (see workers/ffmpeg_worker.py)"),
+		worker("whisper worker", "DAVID_WHISPER_WORKER", "CUTVEC_WHISPER_WORKER",
+			"set DAVID_WHISPER_WORKER to the whisper transcribe worker (see workers/whisper_worker.py)"),
+		worker("index worker", "DAVID_INDEX_WORKER", "CUTVEC_INDEX_WORKER",
+			"set DAVID_INDEX_WORKER to the embedding index worker (see workers/index_worker.py)"),
+		worker("search worker", "DAVID_SEARCH_WORKER", "CUTVEC_SEARCH_WORKER",
+			"set DAVID_SEARCH_WORKER to the vector search worker (see workers/search_worker.py)"),
+		worker("mediapipe worker", "DAVID_MEDIAPIPE_WORKER", "CUTVEC_MEDIAPIPE_WORKER",
+			"set DAVID_MEDIAPIPE_WORKER to the active-speaker worker (see workers/mediapipe_worker.py)"),
+		worker("melt worker", "DAVID_MELT_WORKER", "CUTVEC_MELT_WORKER",
+			"set DAVID_MELT_WORKER to the melt render worker (see workers/melt_worker.py)"),
 
 		// Python packages the ML workers import.
 		pkg("lancedb", "pip install lancedb", "lancedb"),
@@ -246,8 +255,8 @@ func specs() []spec {
 			"fastembed", "sentence_transformers"),
 
 		// Model files the transcribe and speakers workers load.
-		model("whisper ggml model", "CUTVEC_WHISPER_MODEL",
-			"set CUTVEC_WHISPER_MODEL to a ggml-*.bin, e.g. from https://huggingface.co/ggerganov/whisper.cpp",
+		model("whisper ggml model", "DAVID_WHISPER_MODEL", "CUTVEC_WHISPER_MODEL",
+			"set DAVID_WHISPER_MODEL to a ggml-*.bin, e.g. from https://huggingface.co/ggerganov/whisper.cpp",
 			"Library/Application Support/podcli/models/ggml-base.bin",
 			"/opt/homebrew/share/whisper-cpp/ggml-base.bin",
 			".cache/whisper/ggml-base.bin"),
@@ -264,17 +273,22 @@ func faceLandmarkerSpec() spec {
 		newPath    = "Library/Application Support/daVid/models/face_landmarker.task"
 		legacyPath = "Library/Application Support/cutvec/models/face_landmarker.task"
 		altPath    = "Downloads/podcast_edit/models/face_landmarker.task"
-		env        = "CUTVEC_FACE_LANDMARKER"
-		hint       = "set CUTVEC_FACE_LANDMARKER, or download face_landmarker.task from https://storage.googleapis.com/mediapipe-models/face_landmarker/"
+		envNew     = "DAVID_FACE_LANDMARKER"
+		envLegacy  = "CUTVEC_FACE_LANDMARKER"
+		hint       = "set DAVID_FACE_LANDMARKER, or download face_landmarker.task from https://storage.googleapis.com/mediapipe-models/face_landmarker/"
 	)
 	return spec{
 		name: "mediapipe face_landmarker", kind: KindModel, required: true, hint: hint,
 		probe: func(p Probe) (bool, string) {
-			if v := p.Getenv(env); v != "" {
-				if p.FileExists(v) {
-					return true, v
+			env := p.Getenv(envNew)
+			if env == "" {
+				env = p.Getenv(envLegacy)
+			}
+			if env != "" {
+				if p.FileExists(env) {
+					return true, env
 				}
-				return false, v
+				return false, env
 			}
 			for _, rel := range []string{newPath, altPath, legacyPath} {
 				full := filepath.Join(p.Home(), rel)
@@ -285,14 +299,14 @@ func faceLandmarkerSpec() spec {
 			return false, ""
 		},
 		advisory: func(p Probe) string {
-			if p.Getenv(env) != "" {
+			if p.Getenv(envNew) != "" || p.Getenv(envLegacy) != "" {
 				return ""
 			}
 			newFull := filepath.Join(p.Home(), newPath)
 			legacyFull := filepath.Join(p.Home(), legacyPath)
 			if !p.FileExists(newFull) && p.FileExists(legacyFull) {
 				return fmt.Sprintf(
-					"migrate face_landmarker.task: copy %s to %s — the cutvec support path is deprecated in favour of daVid",
+					"migrate face_landmarker.task: copy %s to %s — the cutvec path is deprecated in favour of daVid",
 					legacyFull, newFull,
 				)
 			}

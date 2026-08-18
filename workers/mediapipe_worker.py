@@ -18,7 +18,7 @@ Approach (what actually survives a real interview shot):
   bridged, and no turn is emitted shorter than MIN_TURN_SEC.
 
 Analysis runs on a small grayscale-friendly proxy, not the source resolution.
-The landmarker model is found via CUTVEC_FACE_LANDMARKER or the usual install
+The landmarker model is found via DAVID_FACE_LANDMARKER (or deprecated CUTVEC_FACE_LANDMARKER) or the usual install
 locations.
 """
 
@@ -28,7 +28,7 @@ import os
 import tempfile
 from pathlib import Path
 
-from cutvec_worker import WorkerError, log, need, require_module, require_tool, run_tool, serve
+from david_worker import WorkerError, log, need, require_module, require_tool, run_tool, serve
 
 PROXY_W, PROXY_FPS = 960, 15  # analysis resolution / rate
 UPSCALE = 2  # half-crop upscale before detection
@@ -52,7 +52,19 @@ MODEL_URL = (
 
 
 def find_model() -> str:
-    env = os.environ.get("CUTVEC_FACE_LANDMARKER")
+    env = os.environ.get("DAVID_FACE_LANDMARKER")
+    if not env:
+        legacy = os.environ.get("CUTVEC_FACE_LANDMARKER")
+        if legacy:
+            log(
+                {
+                    "level": "warn",
+                    "msg": "CUTVEC_FACE_LANDMARKER is deprecated, rename to DAVID_FACE_LANDMARKER",
+                    "deprecated": "CUTVEC_FACE_LANDMARKER",
+                    "canonical": "DAVID_FACE_LANDMARKER",
+                }
+            )
+            env = legacy
     if env and Path(env).exists():
         return env
     for cand in MODEL_CANDIDATES:
@@ -61,7 +73,7 @@ def find_model() -> str:
     raise WorkerError(
         "worker.missing",
         "mediapipe face_landmarker.task model not found",
-        hint=f"set CUTVEC_FACE_LANDMARKER, or download it from {MODEL_URL}",
+        hint=f"set DAVID_FACE_LANDMARKER, or download it from {MODEL_URL}",
     )
 
 

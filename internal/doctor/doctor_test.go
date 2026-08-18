@@ -49,18 +49,18 @@ func fullyProvisioned() fakeProbe {
 		}
 	}
 	// Workers resolve from their env var to an existing file.
-	f.env["CUTVEC_FFMPEG_WORKER"] = "/w/ffmpeg"
-	f.env["CUTVEC_WHISPER_WORKER"] = "/w/whisper"
-	f.env["CUTVEC_INDEX_WORKER"] = "/w/index"
-	f.env["CUTVEC_SEARCH_WORKER"] = "/w/search"
-	f.env["CUTVEC_MEDIAPIPE_WORKER"] = "/w/mediapipe"
-	f.env["CUTVEC_MELT_WORKER"] = "/w/melt"
+	f.env["DAVID_FFMPEG_WORKER"] = "/w/ffmpeg"
+	f.env["DAVID_WHISPER_WORKER"] = "/w/whisper"
+	f.env["DAVID_INDEX_WORKER"] = "/w/index"
+	f.env["DAVID_SEARCH_WORKER"] = "/w/search"
+	f.env["DAVID_MEDIAPIPE_WORKER"] = "/w/mediapipe"
+	f.env["DAVID_MELT_WORKER"] = "/w/melt"
 	for _, p := range []string{"/w/ffmpeg", "/w/whisper", "/w/index", "/w/search", "/w/mediapipe", "/w/melt"} {
 		f.files[p] = true
 	}
 	// Models resolve from their env var to an existing file.
-	f.env["CUTVEC_WHISPER_MODEL"] = "/m/ggml.bin"
-	f.env["CUTVEC_FACE_LANDMARKER"] = "/m/face.task"
+	f.env["DAVID_WHISPER_MODEL"] = "/m/ggml.bin"
+	f.env["DAVID_FACE_LANDMARKER"] = "/m/face.task"
 	f.files["/m/ggml.bin"] = true
 	f.files["/m/face.task"] = true
 	// Every python module the packages ask for is importable.
@@ -139,7 +139,7 @@ func TestEmbeddingBackendSatisfiedByEither(t *testing.T) {
 
 func TestWorkerMissingWhenEnvUnset(t *testing.T) {
 	f := fullyProvisioned()
-	delete(f.env, "CUTVEC_MELT_WORKER")
+	delete(f.env, "DAVID_MELT_WORKER")
 	rep := Run(f)
 	c := find(t, rep, "melt worker")
 	if c.Status != StatusMissing {
@@ -152,7 +152,7 @@ func TestWorkerMissingWhenEnvUnset(t *testing.T) {
 
 func TestWorkerMissingWhenPathDoesNotExist(t *testing.T) {
 	f := fullyProvisioned()
-	f.env["CUTVEC_MELT_WORKER"] = "/w/gone"
+	f.env["DAVID_MELT_WORKER"] = "/w/gone"
 	// /w/gone is not in files, so it does not exist.
 	rep := Run(f)
 	c := find(t, rep, "melt worker")
@@ -166,7 +166,7 @@ func TestWorkerMissingWhenPathDoesNotExist(t *testing.T) {
 
 func TestModelFoundAtWellKnownPathWithoutEnv(t *testing.T) {
 	f := fullyProvisioned()
-	delete(f.env, "CUTVEC_WHISPER_MODEL")
+	delete(f.env, "DAVID_WHISPER_MODEL")
 	// Provision one of the well-known home-relative locations instead.
 	rel := filepath.Join(f.home, "Library/Application Support/podcli/models/ggml-base.bin")
 	f.files[rel] = true
@@ -201,6 +201,7 @@ func TestOptionalMissDoesNotFailPreflight(t *testing.T) {
 // TestFaceLandmarkerFoundAtNewDaVidPath verifies the primary lookup path.
 func TestFaceLandmarkerFoundAtNewDaVidPath(t *testing.T) {
 	f := fullyProvisioned()
+	delete(f.env, "DAVID_FACE_LANDMARKER")
 	delete(f.env, "CUTVEC_FACE_LANDMARKER")
 	newPath := filepath.Join(f.home, "Library/Application Support/daVid/models/face_landmarker.task")
 	f.files[newPath] = true
@@ -218,6 +219,7 @@ func TestFaceLandmarkerFoundAtNewDaVidPath(t *testing.T) {
 // the new daVid path does not exist.
 func TestFaceLandmarkerLegacyFallback(t *testing.T) {
 	f := fullyProvisioned()
+	delete(f.env, "DAVID_FACE_LANDMARKER")
 	delete(f.env, "CUTVEC_FACE_LANDMARKER")
 	legacyPath := filepath.Join(f.home, "Library/Application Support/cutvec/models/face_landmarker.task")
 	f.files[legacyPath] = true
@@ -235,6 +237,7 @@ func TestFaceLandmarkerLegacyFallback(t *testing.T) {
 // exists and no env var is set.
 func TestFaceLandmarkerMissingBothPaths(t *testing.T) {
 	f := fullyProvisioned()
+	delete(f.env, "DAVID_FACE_LANDMARKER")
 	delete(f.env, "CUTVEC_FACE_LANDMARKER")
 	// ensure neither well-known path is present
 	delete(f.files, filepath.Join(f.home, "Library/Application Support/daVid/models/face_landmarker.task"))
@@ -254,6 +257,7 @@ func TestFaceLandmarkerMissingBothPaths(t *testing.T) {
 // path exists and the new daVid path does not.
 func TestMigrationRecommendationEmittedWhenOnlyLegacyExists(t *testing.T) {
 	f := fullyProvisioned()
+	delete(f.env, "DAVID_FACE_LANDMARKER")
 	delete(f.env, "CUTVEC_FACE_LANDMARKER")
 	legacyPath := filepath.Join(f.home, "Library/Application Support/cutvec/models/face_landmarker.task")
 	f.files[legacyPath] = true

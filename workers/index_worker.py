@@ -19,7 +19,7 @@ import json
 from pathlib import Path
 
 import embedder
-from cutvec_worker import WorkerError, log, need, require_module, serve_ops
+from david_worker import WorkerError, log, need, require_module, serve_ops
 
 SEG_MAX_SEC = 12.0  # a segment never spans more than this
 SEG_MIN_SEC = 4.0  # ...and is closed once it is at least this long

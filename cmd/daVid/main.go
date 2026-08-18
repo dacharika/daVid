@@ -17,14 +17,16 @@ import (
 
 	"github.com/mlnomadpy/daVid/internal/axerror"
 	"github.com/mlnomadpy/daVid/internal/catalog"
+	"github.com/mlnomadpy/daVid/internal/envconfig"
 	"github.com/mlnomadpy/daVid/internal/project"
 )
 
 // progressInterval is how often the long steps heartbeat on stderr. It defaults
 // to progress's own cadence and can be overridden with DAVID_PROGRESS_INTERVAL
-// (any Go duration, e.g. "5s"); an unparseable value falls back to the default.
+// (any Go duration, e.g. "5s"); CUTVEC_PROGRESS_INTERVAL is accepted during the
+// deprecation window. An unparseable value falls back to the default.
 func progressInterval() time.Duration {
-	if v := os.Getenv("DAVID_PROGRESS_INTERVAL"); v != "" {
+	if v := envconfig.Lookup("DAVID_PROGRESS_INTERVAL", "CUTVEC_PROGRESS_INTERVAL"); v != "" {
 		if d, err := time.ParseDuration(v); err == nil && d > 0 {
 			return d
 		}
@@ -336,9 +338,9 @@ func emitError(err error) {
 // place — a fix to the resolution rule now lands once instead of five times.
 
 var (
-	whisperWorkerSpec   = workerSpec{"DAVID_WHISPER_WORKER", "whisper", "whisper worker executable"}
-	indexWorkerSpec     = workerSpec{"DAVID_INDEX_WORKER", "index (embedding)", "local embedding worker executable"}
-	searchWorkerSpec    = workerSpec{"DAVID_SEARCH_WORKER", "search", "local search worker executable"}
-	mediapipeWorkerSpec = workerSpec{"DAVID_MEDIAPIPE_WORKER", "mediapipe", "mediapipe worker executable"}
-	meltWorkerSpec      = workerSpec{"DAVID_MELT_WORKER", "melt", "melt render worker executable"}
+	whisperWorkerSpec   = workerSpec{"DAVID_WHISPER_WORKER", "CUTVEC_WHISPER_WORKER", "whisper", "whisper worker executable"}
+	indexWorkerSpec     = workerSpec{"DAVID_INDEX_WORKER", "CUTVEC_INDEX_WORKER", "index (embedding)", "local embedding worker executable"}
+	searchWorkerSpec    = workerSpec{"DAVID_SEARCH_WORKER", "CUTVEC_SEARCH_WORKER", "search", "local search worker executable"}
+	mediapipeWorkerSpec = workerSpec{"DAVID_MEDIAPIPE_WORKER", "CUTVEC_MEDIAPIPE_WORKER", "mediapipe", "mediapipe worker executable"}
+	meltWorkerSpec      = workerSpec{"DAVID_MELT_WORKER", "CUTVEC_MELT_WORKER", "melt", "melt render worker executable"}
 )

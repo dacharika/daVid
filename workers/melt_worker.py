@@ -35,7 +35,7 @@ import subprocess
 import time
 from pathlib import Path
 
-from cutvec_worker import WorkerError, log, need, require_tool, run_tool, serve_ops
+from david_worker import WorkerError, log, need, require_tool, run_tool, serve_ops
 
 PROFILES = {
     # (video codec args) — melt's avformat consumer takes ffmpeg-style options
