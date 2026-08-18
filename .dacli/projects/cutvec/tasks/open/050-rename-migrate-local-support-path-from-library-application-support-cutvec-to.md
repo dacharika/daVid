@@ -18,3 +18,4 @@ new installs find models under the canonical daVid path while existing cutvec mo
 - [ ] doctor_test.go covers new-path lookup, legacy fallback, and missing-model cases
 - [ ] go build ./... and go test ./... both exit 0; ruff checks pass
 ## Log
+- 2026-08-18T12:40:30Z claimed by a-hb2p9mgjxq
