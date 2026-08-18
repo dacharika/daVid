@@ -63,7 +63,7 @@ index on this source first"` does not.
 ## Adding a worker
 
 Workers are subprocesses speaking one JSON Request in, one JSON Response out —
-see `workers/README.md` for the contract, and `workers/cutvec_worker.py` for the
+see `workers/README.md` for the contract, and `workers/david_worker.py` for the
 plumbing that handles it. Two things are load-bearing:
 
 - **stdout carries only the Response.** Logging goes to stderr. A stray print is

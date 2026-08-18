@@ -1,4 +1,4 @@
-"""Shared plumbing for cutvec's Python ML workers.
+"""Shared plumbing for daVid's Python ML workers.
 
 Every worker is a subprocess speaking the versioned JSON contract the Go core
 defines in internal/worker: exactly one Request JSON document on stdin, exactly
@@ -133,7 +133,7 @@ def _serve(handlers: dict) -> None:
             raise WorkerError(
                 "worker.version",
                 f"core speaks protocol version {version}, worker speaks {CONTRACT_VERSION}",
-                hint="upgrade the worker or the cutvec core so both speak the same version",
+                hint="upgrade the worker or the daVid core so both speak the same version",
             )
         # A single-op worker keeps answering a request that omits the op.
         got_op = req.get("op") or (known[0] if len(known) == 1 else "")

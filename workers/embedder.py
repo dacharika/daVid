@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import os
 
-from cutvec_worker import WorkerError, log
+from david_worker import WorkerError, log
 
 DEFAULT_MODEL = os.environ.get("CUTVEC_EMBED_MODEL", "BAAI/bge-small-en-v1.5")
 

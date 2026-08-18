@@ -21,7 +21,7 @@ import os
 import tempfile
 from pathlib import Path
 
-from cutvec_worker import WorkerError, log, need, require_tool, run_tool, serve
+from david_worker import WorkerError, log, need, require_tool, run_tool, serve
 
 MODEL_CANDIDATES = [
     Path.home() / "Library/Application Support/podcli/models/ggml-base.bin",
