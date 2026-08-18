@@ -7,28 +7,30 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"os"
 
 	"github.com/mlnomadpy/daVid/internal/axerror"
+	"github.com/mlnomadpy/daVid/internal/envconfig"
 	"github.com/mlnomadpy/daVid/internal/worker"
 )
 
 // workerSpec is how one step names the executable it needs and explains its
-// absence. `what` completes "no %s worker configured"; `target` completes
-// "…env var to the %s".
+// absence. env is the canonical DAVID_* var; legacyEnv is the deprecated
+// CUTVEC_* var accepted during the deprecation window. `what` completes
+// "no %s worker configured"; `target` completes "…env var to the %s".
 type workerSpec struct {
-	env    string
-	what   string
-	target string
+	env       string
+	legacyEnv string
+	what      string
+	target    string
 }
 
 // resolveNamedWorker prefers the request's explicit worker path, falls back to
-// the step's env var, and refuses with a branchable worker.missing when neither
-// names one — a missing worker is a configuration answer, not a crash.
+// the step's env var (DAVID_* canonical, CUTVEC_* legacy), and refuses with a
+// branchable worker.missing when neither names one.
 func resolveNamedWorker(reqPath string, reqArgs []string, spec workerSpec) (worker.Worker, error) {
 	path := reqPath
 	if path == "" {
-		path = os.Getenv(spec.env)
+		path = envconfig.Lookup(spec.env, spec.legacyEnv)
 	}
 	if path == "" {
 		return worker.Worker{}, axerror.New("worker.missing",

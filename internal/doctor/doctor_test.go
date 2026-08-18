@@ -49,18 +49,18 @@ func fullyProvisioned() fakeProbe {
 		}
 	}
 	// Workers resolve from their env var to an existing file.
-	f.env["CUTVEC_FFMPEG_WORKER"] = "/w/ffmpeg"
-	f.env["CUTVEC_WHISPER_WORKER"] = "/w/whisper"
-	f.env["CUTVEC_INDEX_WORKER"] = "/w/index"
-	f.env["CUTVEC_SEARCH_WORKER"] = "/w/search"
-	f.env["CUTVEC_MEDIAPIPE_WORKER"] = "/w/mediapipe"
-	f.env["CUTVEC_MELT_WORKER"] = "/w/melt"
+	f.env["DAVID_FFMPEG_WORKER"] = "/w/ffmpeg"
+	f.env["DAVID_WHISPER_WORKER"] = "/w/whisper"
+	f.env["DAVID_INDEX_WORKER"] = "/w/index"
+	f.env["DAVID_SEARCH_WORKER"] = "/w/search"
+	f.env["DAVID_MEDIAPIPE_WORKER"] = "/w/mediapipe"
+	f.env["DAVID_MELT_WORKER"] = "/w/melt"
 	for _, p := range []string{"/w/ffmpeg", "/w/whisper", "/w/index", "/w/search", "/w/mediapipe", "/w/melt"} {
 		f.files[p] = true
 	}
 	// Models resolve from their env var to an existing file.
-	f.env["CUTVEC_WHISPER_MODEL"] = "/m/ggml.bin"
-	f.env["CUTVEC_FACE_LANDMARKER"] = "/m/face.task"
+	f.env["DAVID_WHISPER_MODEL"] = "/m/ggml.bin"
+	f.env["DAVID_FACE_LANDMARKER"] = "/m/face.task"
 	f.files["/m/ggml.bin"] = true
 	f.files["/m/face.task"] = true
 	// Every python module the packages ask for is importable.
@@ -139,7 +139,7 @@ func TestEmbeddingBackendSatisfiedByEither(t *testing.T) {
 
 func TestWorkerMissingWhenEnvUnset(t *testing.T) {
 	f := fullyProvisioned()
-	delete(f.env, "CUTVEC_MELT_WORKER")
+	delete(f.env, "DAVID_MELT_WORKER")
 	rep := Run(f)
 	c := find(t, rep, "melt worker")
 	if c.Status != StatusMissing {
@@ -152,7 +152,7 @@ func TestWorkerMissingWhenEnvUnset(t *testing.T) {
 
 func TestWorkerMissingWhenPathDoesNotExist(t *testing.T) {
 	f := fullyProvisioned()
-	f.env["CUTVEC_MELT_WORKER"] = "/w/gone"
+	f.env["DAVID_MELT_WORKER"] = "/w/gone"
 	// /w/gone is not in files, so it does not exist.
 	rep := Run(f)
 	c := find(t, rep, "melt worker")
@@ -166,7 +166,7 @@ func TestWorkerMissingWhenPathDoesNotExist(t *testing.T) {
 
 func TestModelFoundAtWellKnownPathWithoutEnv(t *testing.T) {
 	f := fullyProvisioned()
-	delete(f.env, "CUTVEC_WHISPER_MODEL")
+	delete(f.env, "DAVID_WHISPER_MODEL")
 	// Provision one of the well-known home-relative locations instead.
 	rel := filepath.Join(f.home, "Library/Application Support/podcli/models/ggml-base.bin")
 	f.files[rel] = true

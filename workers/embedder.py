@@ -16,7 +16,24 @@ import os
 
 from cutvec_worker import WorkerError, log
 
-DEFAULT_MODEL = os.environ.get("CUTVEC_EMBED_MODEL", "BAAI/bge-small-en-v1.5")
+
+def _embed_model() -> str:
+    if v := os.environ.get("DAVID_EMBED_MODEL"):
+        return v
+    if v := os.environ.get("CUTVEC_EMBED_MODEL"):
+        log(
+            {
+                "level": "warn",
+                "msg": "CUTVEC_EMBED_MODEL is deprecated, rename to DAVID_EMBED_MODEL",
+                "deprecated": "CUTVEC_EMBED_MODEL",
+                "canonical": "DAVID_EMBED_MODEL",
+            }
+        )
+        return v
+    return "BAAI/bge-small-en-v1.5"
+
+
+DEFAULT_MODEL = _embed_model()
 
 INSTALL_HINT = (
     "pip install fastembed  (or sentence-transformers) — cutvec embeds locally, no API key required"
