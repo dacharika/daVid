@@ -39,8 +39,10 @@ MIN_TURN_SEC = 1.8  # never emit a turn shorter than this
 BRIDGE_SEC = 3.5  # bridge dropouts shorter than this
 
 MODEL_CANDIDATES = [
+    Path.home() / "Library/Application Support/daVid/models/face_landmarker.task",
     Path.home() / "Downloads/podcast_edit/models/face_landmarker.task",
-    Path.home() / "Library/Application Support/cutvec/models/face_landmarker.task",
+    Path.home()
+    / "Library/Application Support/cutvec/models/face_landmarker.task",  # legacy fallback
     Path(__file__).resolve().parent / "models/face_landmarker.task",
 ]
 MODEL_URL = (
