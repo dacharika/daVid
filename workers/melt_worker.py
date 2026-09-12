@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""cutvec melt worker — render MLT timelines and report what MLT can do.
+"""daVid melt worker — render MLT timelines and report what MLT can do.
 
 op: "render"
 params: {"timeline": "<path to .mlt>", "output": "<path to write>", "quality": "proxy"|"final"}
@@ -118,6 +118,17 @@ def handle_filters(params: dict) -> dict:
     return {"filters": detailed, "count": len(matches), "total": len(everything)}
 
 
+CONTAINERS = {"mp4": "mp4", "mov": "mov", "mkv": "matroska", "webm": "webm"}
+
+
+def container_for(output: str) -> str:
+    """Return the muxer for an output path, ignoring atomic-publish `.tmp`."""
+    name = Path(output).name
+    if name.endswith(".tmp"):
+        name = name[: -len(".tmp")]
+    return CONTAINERS.get(Path(name).suffix.lstrip(".").lower(), "mp4")
+
+
 def handle_render(params: dict) -> dict:
     timeline = need(params, "timeline")
     output = need(params, "output")
@@ -133,7 +144,7 @@ def handle_render(params: dict) -> dict:
         raise WorkerError(
             "input.invalid",
             f"timeline does not exist: {timeline}",
-            hint="build a timeline with `cutvec timeline` before rendering",
+            hint="build a timeline with `daVid timeline` before rendering",
         )
     melt = require_tool(
         "melt",
@@ -141,7 +152,14 @@ def handle_render(params: dict) -> dict:
     )
     Path(output).parent.mkdir(parents=True, exist_ok=True)
 
-    argv = [melt, "-progress2", timeline, "-consumer", f"avformat:{output}"] + PROFILES[quality]
+    # The Go core asks the worker to write `<final>.mp4.tmp` before publishing
+    # atomically. avformat cannot infer a muxer from `.tmp`, so name the format
+    # derived from the real extension underneath it.
+    argv = (
+        [melt, "-progress2", timeline, "-consumer", f"avformat:{output}"]
+        + PROFILES[quality]
+        + [f"f={container_for(output)}"]
+    )
     log(f"rendering {Path(timeline).name} -> {output} ({quality})")
     run_tool(argv, "melt render")
 
@@ -188,7 +206,7 @@ def handle_verify(params: dict) -> dict:
         raise WorkerError(
             "input.invalid",
             f"timeline does not exist: {timeline}",
-            hint="build a timeline with `cutvec timeline` before verifying",
+            hint="build a timeline with `daVid timeline` before verifying",
         )
     # Bounded on purpose: this answers "does it load and start", not "does every
     # frame of the whole edit render", which would cost as much as rendering.

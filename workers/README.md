@@ -1,4 +1,4 @@
-# cutvec Python workers
+# daVid Python workers
 
 The Go core does orchestration, caching and the agent-facing contract; these
 workers do the ML and media work behind it. Each one is a subprocess speaking
@@ -33,9 +33,14 @@ pip install lancedb fastembed mediapipe opencv-python numpy
 Models are found automatically where whisper.cpp/podcli install them, or set
 them explicitly:
 
-- `CUTVEC_WHISPER_MODEL` — a ggml whisper model (`ggml-base.bin`)
-- `CUTVEC_FACE_LANDMARKER` — MediaPipe `face_landmarker.task`
-- `CUTVEC_EMBED_MODEL` — embedding model (default `BAAI/bge-small-en-v1.5`)
+- `DAVID_WHISPER_MODEL` — a ggml whisper model (`ggml-base.bin`)
+- `DAVID_FACE_LANDMARKER` — MediaPipe `face_landmarker.task`
+- `DAVID_EMBED_MODEL` — embedding model (default `BAAI/bge-small-en-v1.5`)
+
+Legacy `CUTVEC_*` names remain read-only compatibility aliases for one
+deprecation window. `DAVID_*` always wins when both forms are present; daVid
+emits a structured warning when it observes a legacy name. New integrations
+must use `DAVID_*`.
 
 Embeddings run **locally** (fastembed, falling back to sentence-transformers).
 No API key, no network at query time — an agent tool has to be reproducible.
@@ -46,16 +51,16 @@ Each command takes the executable in its request, or falls back to an env var:
 
 ```bash
 PY=/path/to/python3   # the interpreter that has the ML packages installed
-export CUTVEC_WHISPER_WORKER=$PY   # + CUTVEC_FFMPEG_WORKER, CUTVEC_INDEX_WORKER,
-                                   #   CUTVEC_SEARCH_WORKER, CUTVEC_MEDIAPIPE_WORKER,
-                                   #   CUTVEC_MELT_WORKER
+export DAVID_WHISPER_WORKER=$PY   # + DAVID_FFMPEG_WORKER, DAVID_INDEX_WORKER,
+                                   #   DAVID_SEARCH_WORKER, DAVID_MEDIAPIPE_WORKER,
+                                   #   DAVID_MELT_WORKER
 ```
 
 Per-request (this is what the smoke test does), which also carries the script path:
 
 ```bash
 echo '{"project":"/tmp/p","worker":"'$PY'","workerArgs":["workers/index_worker.py"]}' \
-  | cutvec index /tmp/p --json
+  | daVid index /tmp/p --json
 ```
 
 ## Verifying

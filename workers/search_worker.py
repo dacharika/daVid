@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""cutvec search worker — semantic query over the indexed transcript segments.
+"""daVid search worker — semantic query over the indexed transcript segments.
 
 op: "search"
 params: {"query": "<what to find>", "table": "<path to .lance table>", "limit": N}
@@ -40,7 +40,7 @@ def handle(params: dict) -> dict:
         raise WorkerError(
             "index.missing",
             f"no index table at {table_path}",
-            hint="run `cutvec index` before searching",
+            hint="run `daVid index` before searching",
         )
     lancedb = require_module("lancedb", "pip install lancedb")
 
@@ -52,7 +52,7 @@ def handle(params: dict) -> dict:
         raise WorkerError(
             "index.missing",
             f"cannot open index table {name!r}: {exc}",
-            hint="re-run `cutvec index` to rebuild the table",
+            hint="re-run `daVid index` to rebuild the table",
         ) from exc
 
     emb = embedder.load()
@@ -86,7 +86,7 @@ def handle_assets(params: dict) -> dict:
         raise WorkerError(
             "index.missing",
             f"no asset index at {table_path}",
-            hint="run `cutvec assets index` before searching assets",
+            hint="run `daVid assets index` before searching assets",
         )
     lancedb = require_module("lancedb", "pip install lancedb")
     db = lancedb.connect(str(table_dir.parent))
@@ -97,7 +97,7 @@ def handle_assets(params: dict) -> dict:
         raise WorkerError(
             "index.missing",
             f"cannot open asset table {name!r}: {exc}",
-            hint="re-run `cutvec assets index` to rebuild it",
+            hint="re-run `daVid assets index` to rebuild it",
         ) from exc
 
     emb = embedder.load()

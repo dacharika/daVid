@@ -1,4 +1,4 @@
-// Package project models cutvec's explicit project-directory state: the on-disk
+// Package project models daVid's explicit project-directory state: the on-disk
 // home for proxies, renders, the content-hash cache, and step results that make
 // runs deterministic, idempotent, and resumable. Handles passed between tool
 // calls resolve to paths under a Project, never to inlined blobs.
@@ -23,7 +23,7 @@ import (
 )
 
 // ManifestVersion is the schema version stamped into every project.json, so a
-// later cutvec can recognise and migrate manifests it did not write.
+// later daVid can recognise and migrate manifests it did not write.
 const ManifestVersion = "0"
 
 // ErrNotInitialized is returned by steps that require a project.json manifest
@@ -31,7 +31,7 @@ const ManifestVersion = "0"
 // the stable "project.uninitialized" axerror code.
 var ErrNotInitialized = errors.New("project not initialized")
 
-// Project is a handle to a cutvec project directory. It is a value: opening a
+// Project is a handle to a daVid project directory. It is a value: opening a
 // project records where state lives without yet touching the filesystem, so
 // callers can plan (--plan / dry-run) without side effects.
 type Project struct {
@@ -237,7 +237,7 @@ const fingerprintBytes = 8 << 20
 // This is NOT the content hash and never becomes one — it only answers "is this
 // the same bytes I hashed last time?". A file rewritten in place always moves
 // its mtime, so the realistic way to fool this is to craft a file that matches
-// another's size, nanosecond mtime, and both 8 MB ends. `cutvec ingest --rehash`
+// another's size, nanosecond mtime, and both 8 MB ends. `daVid ingest --rehash`
 // bypasses it for anyone who needs that certainty.
 func fingerprint(path string) (string, error) {
 	f, err := os.Open(path)
@@ -797,7 +797,7 @@ const (
 
 // StateGraph is the whole project graph an agent reads in one call: the sources
 // ingested so far and the artifacts, each marked done or pending. This is what
-// `cutvec status` returns — enough to decide what step to run next.
+// `daVid status` returns — enough to decide what step to run next.
 type StateGraph struct {
 	Project   string     `json:"project"`
 	Name      string     `json:"name"`

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""cutvec ingest worker — probe a source and build the derived media ingest caches.
+"""daVid ingest worker — probe a source and build the derived media ingest caches.
 
 op: "probe"
 params: {"source": "<path to media>"}

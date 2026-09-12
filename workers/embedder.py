@@ -1,4 +1,4 @@
-"""Local text embeddings for cutvec's index/search workers.
+"""Local text embeddings for daVid's index/search workers.
 
 Embeddings are deliberately local: an agent tool must run offline and
 deterministically, with no API key and no network at query time. fastembed
@@ -36,7 +36,7 @@ def _embed_model() -> str:
 DEFAULT_MODEL = _embed_model()
 
 INSTALL_HINT = (
-    "pip install fastembed  (or sentence-transformers) — cutvec embeds locally, no API key required"
+    "pip install fastembed  (or sentence-transformers) — daVid embeds locally, no API key required"
 )
 
 

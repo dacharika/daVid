@@ -1,4 +1,4 @@
-# cutvec has no third-party Go modules by design, so the supply chain that can
+# daVid has no third-party Go modules by design, so the supply chain that can
 # actually drift is the CI workflow's actions and the Python tooling the worker
 # jobs install. Those are what this watches.
 version: 2

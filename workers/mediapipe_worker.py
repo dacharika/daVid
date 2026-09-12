@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""cutvec speakers worker — active-speaker detection for a fixed two-person frame.
+"""daVid speakers worker — active-speaker detection for a fixed two-person frame.
 
 op: "speakers"
 params: {"source": "<path to media>", "layout": "two-person"}

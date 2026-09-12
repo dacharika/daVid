@@ -1,8 +1,8 @@
 # Build output
 /build/
 /dist/
-# Built binary at repo root only — anchored so it never matches cmd/cutvec/ source.
-/cutvec
+# Built binary at repo root only — anchored so it never matches cmd/daVid/ source.
+/daVid
 *.exe
 *.test
 *.out

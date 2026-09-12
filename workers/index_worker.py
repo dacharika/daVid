@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""cutvec index worker — embed transcript segments into a local LanceDB table.
+"""daVid index worker — embed transcript segments into a local LanceDB table.
 
 op: "index"
 params: {"transcript": "<path to transcript.json>", "table": "<path to .lance table>"}
@@ -63,7 +63,7 @@ def handle(params: dict) -> dict:
         raise WorkerError(
             "input.invalid",
             f"transcript does not exist: {transcript_path}",
-            hint="run `cutvec transcribe` before `cutvec index`",
+            hint="run `daVid transcribe` before `daVid index`",
         )
     lancedb = require_module("lancedb", "pip install lancedb")
 

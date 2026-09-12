@@ -1,6 +1,6 @@
-# cutvec
+# daVid
 
-Agent-native video-editing CLI **and** MCP server. cutvec reproduces a full
+Agent-native video-editing CLI **and** MCP server. daVid reproduces a full
 podcast edit — proxy, transcribe, active-speaker reframe, vertical shorts with
 hook and karaoke captions, color grade, denoise, SFX — as **MLT XML timelines**
 an agent can mutate, plus **vector search** over the transcript. It is built for
@@ -19,12 +19,22 @@ go test ./...         # exits 0
 Build the binary and list the tool catalog:
 
 ```sh
-go build -o build/cutvec ./cmd/cutvec
-./build/cutvec describe    # emits the tool catalog + JSON Schemas as JSON
+go build -o build/daVid ./cmd/daVid
+./build/daVid describe    # emits the tool catalog + JSON Schemas as JSON
 ```
 
 `describe` is the entry point every agent starts from: one self-describing
 catalog backs both the CLI and the MCP server, so the two surfaces never drift.
+
+## Migration from cutvec
+
+`daVid` is the canonical repository, executable, MCP server name, module path,
+documentation identity, release artifact, and configuration prefix. Existing
+project manifests and timelines remain readable without conversion. Legacy
+`CUTVEC_*` environment variables and the old local model directory are accepted
+temporarily as compatibility fallbacks; `DAVID_*` takes precedence and new
+integrations must use it. Historical records under `.dacli/projects/cutvec`
+remain unchanged because they document how the repository was built.
 
 ## Project state: init, ingest, status
 
@@ -33,17 +43,17 @@ A project is a directory holding a `project.json` manifest plus a content-hash
 read the whole graph in one call:
 
 ```sh
-echo '{"project":"proj","name":"podcast"}' | ./build/cutvec init
+echo '{"project":"proj","name":"podcast"}' | ./build/daVid init
 # → {"project":"proj","manifest":"proj/project.json","name":"podcast","created":true}
 
-echo '{"project":"proj","source":"raw.mp4"}' | ./build/cutvec ingest
+echo '{"project":"proj","source":"raw.mp4"}' | ./build/daVid ingest
 # → {"source":{"id":"8b1faca47fef","path":"raw.mp4","hash":"8b1f…",
 #              "probe":{"width":3840,"height":2160,"duration":20.03,"fps":59.94},
 #              "proxy":"proj/cache/proxy-8b1f….mp4","audio":"proj/cache/audio-8b1f….wav"}}
-echo '{"project":"proj","source":"raw.mp4"}' | ./build/cutvec ingest   # re-run
+echo '{"project":"proj","source":"raw.mp4"}' | ./build/daVid ingest   # re-run
 # → {"source":{…},"cached":true}   ← content-hash cache hit; nothing re-recorded
 
-echo '{"project":"proj"}' | ./build/cutvec status --json
+echo '{"project":"proj"}' | ./build/daVid status --json
 # → {"project":"proj","name":"podcast","sources":[…],"artifacts":[{"name":"timeline","status":"pending"}]}
 ```
 
@@ -71,13 +81,13 @@ each the structured `{code, hint, retryable}` shape on stderr with a non-zero ex
 token with a `start`/`end` in seconds — so an agent can search the audio and
 build karaoke captions. It runs the whisper worker (a subprocess speaking the
 versioned JSON contract; point at it with `"worker"` or the
-`CUTVEC_WHISPER_WORKER` env var) and caches the result keyed by the source's
+`DAVID_WHISPER_WORKER` env var) and caches the result keyed by the source's
 content hash, so a re-run is a **cache hit** that invokes no worker:
 
 ```sh
-./build/cutvec transcribe proj --json < /dev/null
+./build/daVid transcribe proj --json < /dev/null
 # → {"transcript":"proj/cache/transcribe-<hash>.json","source":"<hash>","words":812,"language":"en","cached":false}
-./build/cutvec transcribe proj --json < /dev/null   # re-run
+./build/daVid transcribe proj --json < /dev/null   # re-run
 # → {"transcript":"proj/cache/transcribe-<hash>.json",…,"cached":true}   (no worker ran)
 ```
 
@@ -97,13 +107,13 @@ each `{start, end, text, score}`, most-relevant first — so an agent can ask fo
 moment by meaning and get back where it is. It searches the source's vector index
 (built by `index`, so a source must be indexed first, else `index.missing`),
 running a local search worker (`"worker"` in the request or the
-`CUTVEC_SEARCH_WORKER` env var) that embeds the query and returns scored hits. The
+`DAVID_SEARCH_WORKER` env var) that embeds the query and returns scored hits. The
 core then re-ranks those hits into a **deterministic** total order — descending
 score, then `start`/`end`/`text` as stable tiebreaks — so a fixed query+index
 always yields the identical ranking, whatever order the worker reported them in:
 
 ```sh
-./build/cutvec search proj "the funniest moment" --json < /dev/null
+./build/daVid search proj "the funniest moment" --json < /dev/null
 # → {"query":"the funniest moment","source":"<hash>","results":[
 #      {"start":132.0,"end":137.5,"text":"…","score":0.88},
 #      {"start":54.2,"end":58.0,"text":"…","score":0.71}],"count":2,"model":"…"}
@@ -126,7 +136,7 @@ path), not the XML blob:
 
 ```sh
 echo '{"project":"proj","clips":[{"id":"cam1","resource":"raw.mp4"},{"resource":"broll.mp4"}]}' \
-  | ./build/cutvec timeline
+  | ./build/daVid timeline
 # → {"timeline":"proj/timeline.mlt","producers":2}
 ```
 
@@ -140,18 +150,18 @@ structured `{code, hint, retryable}` shape on stderr with a non-zero exit.
 
 `render` turns a project's built MLT timeline into an output video with the melt
 worker (a subprocess speaking the versioned JSON contract; point at it with
-`"worker"` in the request or the `CUTVEC_MELT_WORKER` env var). The result is
+`"worker"` in the request or the `DAVID_MELT_WORKER` env var). The result is
 keyed on the timeline's content hash **and** the quality tier, so proxy and final
 renders coexist and a re-run at the same tier is a **cache hit** that invokes no
 worker. Choose the tier with `--proxy` (fast draft, the default) or `--final`
 (full quality):
 
 ```sh
-./build/cutvec render proj --json < /dev/null
+./build/daVid render proj --json < /dev/null
 # → {"output":"proj/cache/render-<hash>-proxy.mp4","timeline":"proj/timeline.mlt","source":"<hash>","quality":"proxy","cached":false}
-./build/cutvec render proj --final --json < /dev/null
+./build/daVid render proj --final --json < /dev/null
 # → {"output":"proj/cache/render-<hash>-final.mp4",…,"quality":"final","cached":false}
-./build/cutvec render proj --json < /dev/null   # re-run at proxy
+./build/daVid render proj --json < /dev/null   # re-run at proxy
 # → {"output":"proj/cache/render-<hash>-proxy.mp4",…,"cached":true}   (no worker ran)
 ```
 
@@ -200,13 +210,13 @@ reframe and shorts recipes cut on. Like the other analysis steps it is keyed on
 the source's content hash, so a re-run is a cache hit that invokes no worker:
 
 ```sh
-./build/cutvec speakers proj --json < /dev/null
+./build/daVid speakers proj --json < /dev/null
 # → {"speakers":"proj/cache/speakers-<hash>.json","source":"<hash>","turns":184,
 #    "layout":"two-person","cached":false}
 ```
 
 The returned `speakers` is a handle to the cached turns, not the turn list. Point
-the worker with `"worker"` or `CUTVEC_MEDIAPIPE_WORKER`; `"source"` selects which
+the worker with `"worker"` or `DAVID_MEDIAPIPE_WORKER`; `"source"` selects which
 ingested source when the project holds more than one.
 
 ## Reframe: one locked-off wide shot, cut like two cameras
@@ -217,7 +227,7 @@ speaking, falling back to the wide two-shot when nobody is — then renders it. 
 needs a source with a speaker track (run `speakers` first).
 
 ```sh
-./build/cutvec reframe-edit proj --json < /dev/null
+./build/daVid reframe-edit proj --json < /dev/null
 # → {"output":"proj/cache/render-<hash>-final.mp4","timeline":"proj/reframe.mlt",
 #    "duration":1243.0,"shots":[{"start":0,"end":8.4,"shot":"wide"},
 #                               {"start":8.4,"end":21.7,"shot":"left"},…]}
@@ -239,7 +249,7 @@ detected seat, burns word-timed captions, and renders each clip vertical. It
 needs an indexed, transcribed source with a speaker track.
 
 ```sh
-./build/cutvec shorts proj "the funniest moment" --json < /dev/null
+./build/daVid shorts proj "the funniest moment" --json < /dev/null
 # → {"query":"the funniest moment","shorts":[
 #      {"rank":1,"score":0.88,"start":132.0,"end":137.5,
 #       "captions":"proj/cache/shorts/short-1.srt",
@@ -261,19 +271,19 @@ avfilter set — and expands a named filter's parameters, so an agent composes
 `timeline` effects from what is actually present:
 
 ```sh
-echo '{"query":"denoise","limit":3}' | ./build/cutvec filters
+echo '{"query":"denoise","limit":3}' | ./build/daVid filters
 # → {"count":3,"filters":[
 #      {"name":"avfilter.atadenoise","description":"Apply an Adaptive Temporal Averaging Denoiser."},
 #      {"name":"avfilter.owdenoise","description":"Denoise using wavelets."},
 #      {"name":"avfilter.vaguedenoiser","description":"Apply a Wavelet based Denoiser."}],
 #    "presets":["denoise","denoise-strong","grade","loudness","warm"]}
 
-echo '{"name":"avfilter.curves"}' | ./build/cutvec filters
+echo '{"name":"avfilter.curves"}' | ./build/daVid filters
 # → {"count":1,"filters":[{"name":"avfilter.curves","description":"Adjust components curves.",
 #      "params":[{"name":"av.preset","type":"string","description":"select a color curves preset"},…]}]}
 ```
 
-`presets` are cutvec's own named chains — `grade`, `denoise`, `denoise-strong`,
+`presets` are daVid's own named chains — `grade`, `denoise`, `denoise-strong`,
 `loudness`, `warm` — usable directly as a `timeline` effect without naming a
 service. Parameters are only expanded for a focused lookup, so a broad search
 stays small enough to read.
@@ -285,10 +295,10 @@ library rather than a transcript. `assets index` walks a directory and embeds
 each file; `assets search` returns ranked refs to place on a timeline:
 
 ```sh
-echo '{"project":"proj"}' | ./build/cutvec assets index ~/sfx
+echo '{"project":"proj"}' | ./build/daVid assets index ~/sfx
 # → {"assets":128,"table":"proj/cache/assets.lance","dim":384,"model":"…"}
 
-echo '{"project":"proj"}' | ./build/cutvec assets search "deep impact hit"
+echo '{"project":"proj"}' | ./build/daVid assets search "deep impact hit"
 # → {"query":"deep impact hit","assets":[
 #      {"ref":"sfx/boom.wav","text":"boom","score":0.91},…],"model":"…"}
 ```
@@ -306,11 +316,11 @@ place, so an agent can adjust a single filter without re-running search and
 detection to rebuild everything:
 
 ```sh
-echo '{"project":"proj"}' | ./build/cutvec timeline inspect
+echo '{"project":"proj"}' | ./build/daVid timeline inspect
 # → the structure: each producer and the filters attached to it
 
 echo '{"project":"proj","add":[{"preset":"grade","producer":"cam1"}]}' \
-  | ./build/cutvec timeline edit
+  | ./build/daVid timeline edit
 ```
 
 `add` attaches effects (a named preset, or one MLT service with its properties);
@@ -323,9 +333,9 @@ catalog the CLI dispatches from, so the two surfaces cannot drift:
 
 ```sh
 printf '%s\n' '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18"}}' \
-  | ./build/cutvec mcp serve
+  | ./build/daVid mcp serve
 # → {"jsonrpc":"2.0","id":1,"result":{"capabilities":{"tools":{"listChanged":false}},
-#    "protocolVersion":"2025-06-18","serverInfo":{"name":"cutvec","version":"0"}}}
+#    "protocolVersion":"2025-06-18","serverInfo":{"name":"daVid","version":"0"}}}
 ```
 
 `tools/list` returns each tool with its input schema; `tools/call` runs one
@@ -341,11 +351,11 @@ JSON progress events to **stderr** while their worker runs, so a caller can tell
 slow run from a hung one. **stdout is untouched**: it still carries exactly one JSON
 result, so the machine-readable contract is unchanged and the progress channel is
 safe to ignore. Each event is one object per line, opening with `start`, beating
-`heartbeat` every couple of seconds (override with `CUTVEC_PROGRESS_INTERVAL`, e.g.
+`heartbeat` every couple of seconds (override with `DAVID_PROGRESS_INTERVAL`, e.g.
 `5s`), and closing with `done` (or `error`):
 
 ```sh
-./build/cutvec render proj --json > result.json 2> progress.jsonl < /dev/null
+./build/daVid render proj --json > result.json 2> progress.jsonl < /dev/null
 # progress.jsonl:
 # {"kind":"progress","step":"render","phase":"start","seq":0,"elapsed_s":0}
 # {"kind":"progress","step":"render","phase":"heartbeat","seq":1,"elapsed_s":2.01}
@@ -359,7 +369,7 @@ A cache hit or `--plan` runs no worker, so it returns immediately and emits noth
 
 `doctor` probes every dependency the pipeline needs — external binaries
 (`ffmpeg`, `ffprobe`, `whisper-cli`, `melt`, `python3`), the six python worker
-executables (via their `CUTVEC_*_WORKER` env vars), the ML python packages
+executables (via their `DAVID_*_WORKER` env vars), the ML python packages
 (`lancedb`, `mediapipe`, `numpy`, `opencv-python`, and a `fastembed`/
 `sentence-transformers` embedding backend), and the model files (the whisper
 ggml model and the mediapipe face landmarker) — and reports each as `ok` or
@@ -368,7 +378,7 @@ project, so it is safe to call as a gate before a pipeline spends minutes
 failing halfway on something that was never installed.
 
 ```sh
-./build/cutvec doctor --json
+./build/daVid doctor --json
 # → {"ok":false,"checks":[{"name":"ffmpeg","kind":"binary","status":"ok",…},
 #    {"name":"lancedb","kind":"package","status":"missing","hint":"pip install lancedb"},…],
 #    "missing":2,"requiredMissing":2,"missingNames":["lancedb","mediapipe"]}
@@ -383,7 +393,7 @@ code before starting real work; when everything is present it exits `0` with
 ## Layout
 
 ```
-cmd/cutvec/         entry point — the CLI, and `cutvec mcp serve` over JSON-RPC
+cmd/daVid/         entry point — the CLI, and `daVid mcp serve` over JSON-RPC
 internal/catalog/   the one self-describing tool catalog (backs CLI + MCP)
 internal/axerror/   structured errors {code, hint, retryable}
 internal/project/   explicit project-dir state: content-hash cache, resumable steps
@@ -404,7 +414,7 @@ A single tool call travels one path from entry point to storage and back:
 agent
   │  JSON request (a tool from `describe`)
   ▼
-cmd/cutvec ──▶ internal/catalog        (validate against the tool's JSON Schema)
+cmd/daVid ──▶ internal/catalog        (validate against the tool's JSON Schema)
   │
   ▼
 tool handler ─▶ internal/project       (resolve handles to paths; check hash cache)
@@ -433,7 +443,7 @@ hits the content-hash cache instead of re-running the worker.
 
 ## Status
 
-Builds and tests green from a clean checkout. `cutvec describe` returns the
+Builds and tests green from a clean checkout. `daVid describe` returns the
 catalog of **15 tools** — `describe`, `init`, `ingest`, `status`, `transcribe`,
 `index`, `search`, `speakers`, `shorts`, `assets`, `filters`, `reframe-edit`,
 `timeline`, `render`, `doctor` — and each carries a request from the CLI entry
@@ -449,5 +459,5 @@ lancedb, or melt on `PATH`. CI runs the Go suite on Linux and macOS with `-race`
 and a coverage floor, lints and compiles the workers, and checks every worker
 still answers the JSON contract with no ML dependencies installed.
 
-Running the real pipeline does need those dependencies. `cutvec doctor` is the
+Running the real pipeline does need those dependencies. `daVid doctor` is the
 one call that reports which are missing and how to install each.

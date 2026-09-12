@@ -3,7 +3,7 @@
 # Each iteration: run ONE loop cycle -> accept the tasks that cycle merged into
 # main -> retire finished fixer agents (frees WIP; they don't auto-retire without
 # a PR merge) -> repeat, until backlog empty / STOP file / iteration cap.
-cd ~/Documents/GitHub/cutvec || exit 1
+cd ~/Documents/GitHub/daVid || exit 1
 export PATH="$HOME/go/bin:$HOME/.local/bin:/opt/homebrew/bin:$PATH"
 LOG=.dacli/drive.log; ITER=.dacli/iter.log
 MAX_ITERS=${1:-10}
@@ -36,4 +36,4 @@ dacli status 2>&1 | head -1
 echo "done: $(ls .dacli/projects/cutvec/tasks/done/ 2>/dev/null|wc -l|tr -d ' ')  open: $(ls .dacli/projects/cutvec/tasks/open/ 2>/dev/null|wc -l|tr -d ' ')"
 go build ./... 2>&1 && echo BUILD_OK || echo BUILD_FAIL
 go test ./... 2>&1 | tail -10
-echo "=== command surface ==="; go run ./cmd/cutvec describe 2>&1 | grep -E '"name"'
+echo "=== command surface ==="; go run ./cmd/daVid describe 2>&1 | grep -E '"name"'
