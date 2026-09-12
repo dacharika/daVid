@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""cutvec transcribe worker — word-level transcription via whisper.cpp.
+"""daVid transcribe worker — word-level transcription via whisper.cpp.
 
 op: "transcribe"
 params: {"source": "<path to media>"}

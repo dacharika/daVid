@@ -176,6 +176,9 @@ func TestHelperProcess(t *testing.T) {
 		// path, then report success — exercising the real subprocess round-trip
 		// and the Go side's "did the worker write the file?" verification.
 		outPath, _ := req.Params["output"].(string)
+		if echo := os.Getenv("WORKER_ECHO_FILE"); echo != "" {
+			_ = os.WriteFile(echo, []byte(outPath), 0o644)
+		}
 		if outPath != "" {
 			_ = os.WriteFile(outPath, []byte("fake rendered video"), 0o644)
 		}
@@ -2439,5 +2442,25 @@ func TestUsageIsAccurate(t *testing.T) {
 				t.Errorf("summary for %q starts at column %d, want %d (field too narrow for the longest name)", tool.Name, at, col)
 			}
 		}
+	}
+}
+
+func TestRenderPreservesContainerUnderAtomicTempSuffix(t *testing.T) {
+	dir := renderFixture(t)
+	echo := filepath.Join(t.TempDir(), "asked-for.txt")
+	t.Setenv("WORKER_ECHO_FILE", echo)
+	wpath, wargs := renderWorkerEnv(t, "render")
+
+	body, _ := json.Marshal(map[string]any{"worker": wpath, "workerArgs": wargs})
+	var out bytes.Buffer
+	if err := run([]string{"render", dir}, bytes.NewReader(body), &out); err != nil {
+		t.Fatalf("render: %v", err)
+	}
+	asked, err := os.ReadFile(echo)
+	if err != nil {
+		t.Fatalf("worker recorded no output path: %v", err)
+	}
+	if !strings.HasSuffix(string(asked), ".mp4.tmp") {
+		t.Fatalf("render asked the worker for %q; want a temp path retaining .mp4", asked)
 	}
 }

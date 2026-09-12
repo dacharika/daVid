@@ -15,7 +15,7 @@ go build ./...
 Then check the environment before running anything:
 
 ```bash
-cutvec doctor --json
+daVid doctor --json
 ```
 
 That reports every worker, binary, model and package with a hint for whatever is
@@ -57,7 +57,7 @@ that is the only edit needed — and skipping it means the MCP surface silently
 lies about what the tool takes.
 
 **Make failures actionable.** Return `{code, message, hint, retryable}` where the
-hint says what to do next. `"index missing"` wastes a round trip; `"run cutvec
+hint says what to do next. `"index missing"` wastes a round trip; `"run daVid
 index on this source first"` does not.
 
 ## Adding a worker

@@ -1,6 +1,6 @@
 # Working in this repository
 
-cutvec's primary user is an AI agent, and so is most of its contributor base.
+daVid's primary user is an AI agent, and so is most of its contributor base.
 This file is the brief: what the project values, what has already been decided,
 and the failure modes that have actually cost time here.
 
@@ -28,7 +28,7 @@ wants the content asks for it. Returning a transcript inline would cost a caller
 more tokens than the whole rest of the call.
 
 **Every failure is structured.** `{code, message, hint, retryable}`. The hint has
-to say what to do next — "run `cutvec index` first", not "index missing". An
+to say what to do next — "run `daVid index` first", not "index missing". An
 error a caller cannot act on is a dead end.
 
 **Deterministic and idempotent.** Steps are keyed by content hash; re-running is
@@ -65,7 +65,7 @@ applies to reports from humans, from other agents, and to your own.
 
 | path | what lives there |
 |---|---|
-| `cmd/cutvec` | CLI dispatch, one file per command group, plus the MCP server |
+| `cmd/daVid` | CLI dispatch, one file per command group, plus the MCP server |
 | `internal/catalog` | the tool catalog and JSON Schemas — the source of truth |
 | `internal/timeline` | the MLT XML model: profiles, producers, filters, transitions |
 | `internal/project` | project state, content-hash cache, manifest |
@@ -97,9 +97,12 @@ Recorded as decision notes under `.dacli/projects/cutvec/notes/decisions/`, and
 worth reading before proposing an alternative — they exist so the same debate is
 not had twice. The short version:
 
+The `.dacli/projects/cutvec` path is retained as historical orchestration data;
+it is not a live product identity and must not be rewritten retroactively.
+
 - Go core + Python workers over subprocess JSON, not cgo and not a service.
 - MLT XML as the artifact, not generated ffmpeg strings.
 - LanceDB with local embeddings, not a hosted vector service.
 - Presets are named lists of real MLT filters, so anything a preset does can be
-  written longhand. `cutvec filters` discovers the several hundred MLT offers at
+  written longhand. `daVid filters` discovers the several hundred MLT offers at
   runtime rather than hardcoding a chosen few.

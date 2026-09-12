@@ -1,4 +1,4 @@
-// Package timeline is cutvec's in-memory model of an MLT XML timeline — the
+// Package timeline is daVid's in-memory model of an MLT XML timeline — the
 // declarative, diffable edit artifact an agent mutates and validates, rendered
 // to video by `melt`. The Go types marshal to and from the <mlt> document so an
 // agent edits a structured object, never an opaque ffmpeg command string.

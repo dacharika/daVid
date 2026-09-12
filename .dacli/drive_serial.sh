@@ -4,13 +4,13 @@
 # sync main<-origin -> build next task (loop opens a PR) -> wait for CI ->
 # merge the PR (admin) resolving a stale branch by merging main into it ->
 # accept the task. Bounded by iteration cap / STOP / empty backlog.
-cd ~/Documents/GitHub/cutvec || exit 1
+cd ~/Documents/GitHub/daVid || exit 1
 export PATH="$HOME/go/bin:$HOME/.local/bin:/opt/homebrew/bin:$PATH"
 # zsh aborts a command when a glob matches nothing, where bash passes the
 # pattern through. The accept step below globs for task files that often do not
 # exist, so without this every iteration drowns in "no matches found".
 setopt NULL_GLOB
-REPO=mlnomadpy/cutvec
+REPO=mlnomadpy/daVid
 LOG=.dacli/drive2.log
 N=${1:-5}
 for i in $(seq 1 "$N"); do
@@ -70,4 +70,4 @@ go build ./... 2>&1 && echo BUILD_OK || echo BUILD_FAIL
 go test ./... 2>&1 | tail -6
 # [a-z-]+ not [a-z]+: the hyphen in `reframe-edit` made this silently report 14
 # tools instead of 15, which reads as a missing tool rather than a bad regex.
-go run ./cmd/cutvec describe 2>&1 | grep -oE '"name": "[a-z-]+"' | sort -u | tr '\n' ' '; echo
+go run ./cmd/daVid describe 2>&1 | grep -oE '"name": "[a-z-]+"' | sort -u | tr '\n' ' '; echo

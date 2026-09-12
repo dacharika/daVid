@@ -13,7 +13,7 @@ PY=${2:-python3}
 ROOT=${0:a:h:h}
 W=$ROOT/workers
 PROJ=$(mktemp -d)/proj
-CLI="go run $ROOT/cmd/cutvec"
+CLI="go run $ROOT/cmd/daVid"
 fails=0
 
 step() { print -n "  $1 … " }
@@ -21,7 +21,7 @@ ok()   { print "ok — $1" }
 bad()  { print "FAIL — $1"; fails=$((fails+1)) }
 req()  { print -n "{\"project\":\"$PROJ\",\"worker\":\"$PY\",\"workerArgs\":[\"$1\"]${2:-}}" }
 
-print "cutvec worker smoke test"
+print "daVid worker smoke test"
 print "  media:   $MEDIA"
 print "  python:  $PY"
 print "  project: $PROJ"

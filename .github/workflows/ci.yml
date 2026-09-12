@@ -66,6 +66,9 @@ jobs:
       - name: Test with race detector and coverage
         run: go test -race -covermode=atomic -coverprofile=coverage.out ./...
 
+      - name: Verify canonical product identity
+        run: ./scripts/check_branding.sh
+
       - name: Coverage floor
         shell: bash
         run: |
@@ -113,8 +116,10 @@ jobs:
         # A syntax error in a worker is invisible to the Go suite until a
         # pipeline run fails halfway through.
         run: python -m compileall -q workers/
+      - name: Worker unit tests
+        run: python -m unittest discover -s workers -p 'test_*.py'
       - name: Every worker entry point is executable
-        # doctor tells an agent to point CUTVEC_*_WORKER at these files, and the
+        # doctor tells an agent to point DAVID_*_WORKER at these files, and the
         # core exec()s that path directly. A worker committed 100644 therefore
         # dies with "permission denied" on a fresh clone even though the file is
         # right there with a #!/usr/bin/env python3 line promising otherwise —

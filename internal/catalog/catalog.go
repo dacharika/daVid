@@ -1,7 +1,7 @@
-// Package catalog is cutvec's single self-describing tool catalog. One catalog
+// Package catalog is daVid's single self-describing tool catalog. One catalog
 // backs BOTH the JSON CLI and the MCP server so the two surfaces cannot drift:
 // each Tool carries its name, a one-line summary, and JSON Schemas for its
-// input and output. `cutvec describe` emits this catalog verbatim.
+// input and output. `daVid describe` emits this catalog verbatim.
 package catalog
 
 // Tool is one agent-callable operation, described well enough to generate both
@@ -21,14 +21,14 @@ type Schema map[string]any
 // an agent knows exactly which dialect to validate against.
 const jsonSchemaDialect = "https://json-schema.org/draft/2020-12/schema"
 
-// Catalog is the ordered set of tools cutvec exposes.
+// Catalog is the ordered set of tools daVid exposes.
 type Catalog struct {
 	Version string `json:"version"`
 	Tools   []Tool `json:"tools"`
 }
 
 // Lookup returns the tool with the given name and whether it was found. This is
-// how `cutvec schema <cmd>` resolves a command to its typed IO.
+// how `daVid schema <cmd>` resolves a command to its typed IO.
 func (c Catalog) Lookup(name string) (Tool, bool) {
 	for _, t := range c.Tools {
 		if t.Name == name {
@@ -51,7 +51,7 @@ func (c Catalog) Names() []string {
 // JSONSchema returns a self-contained JSON Schema document for the tool: a
 // draft 2020-12 schema titled by the tool whose `input` and `output` properties
 // hold the schemas the caller must satisfy and can expect back. This is the
-// document `cutvec schema <cmd>` emits.
+// document `daVid schema <cmd>` emits.
 func (t Tool) JSONSchema() Schema {
 	input := t.InputSchema
 	if input == nil {
@@ -88,7 +88,7 @@ func Default() Catalog {
 		Tools: []Tool{
 			{
 				Name:         "describe",
-				Summary:      "Emit the cutvec tool catalog and JSON Schemas.",
+				Summary:      "Emit the daVid tool catalog and JSON Schemas.",
 				InputSchema:  objectSchema(),
 				OutputSchema: objectSchema(),
 			},
@@ -421,7 +421,7 @@ func Default() Catalog {
 						},
 						"count":   map[string]any{"type": "integer", "description": "how many filters matched the query"},
 						"total":   map[string]any{"type": "integer", "description": "how many filters MLT has registered in total"},
-						"presets": map[string]any{"type": "array", "description": "cutvec's named filter chains, usable directly as a timeline effect", "items": map[string]any{"type": "string"}},
+						"presets": map[string]any{"type": "array", "description": "daVid's named filter chains, usable directly as a timeline effect", "items": map[string]any{"type": "string"}},
 					},
 				},
 			},
@@ -522,7 +522,7 @@ func Default() Catalog {
 						},
 						"effects": map[string]any{
 							"type":        "array",
-							"description": "MLT filters attached to the timeline, applied in order. Each effect is either a named preset or one MLT service — run `cutvec filters` to discover services and their parameters.",
+							"description": "MLT filters attached to the timeline, applied in order. Each effect is either a named preset or one MLT service — run `daVid filters` to discover services and their parameters.",
 							"items": map[string]any{
 								"type": "object",
 								"properties": map[string]any{

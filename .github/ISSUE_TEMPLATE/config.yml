@@ -1,8 +1,8 @@
 blank_issues_enabled: true
 contact_links:
   - name: How this project works
-    url: https://github.com/mlnomadpy/cutvec/blob/main/AGENTS.md
+    url: https://github.com/mlnomadpy/daVid/blob/main/AGENTS.md
     about: Architecture, the rules that are not negotiable, and the failure modes that have cost time here.
   - name: Worker protocol
-    url: https://github.com/mlnomadpy/cutvec/blob/main/workers/README.md
+    url: https://github.com/mlnomadpy/daVid/blob/main/workers/README.md
     about: The JSON contract every Python worker speaks, and what each one takes and returns.

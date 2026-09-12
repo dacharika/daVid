@@ -1,4 +1,4 @@
-// Package doctor preflights cutvec's runtime environment in one pass: every
+// Package doctor preflights daVid's runtime environment in one pass: every
 // external binary, python worker, ML package, and model file the podcast-edit
 // pipeline depends on is probed and reported as ok or missing with an actionable
 // install hint. It is pure inspection — no worker is invoked and no project is
@@ -251,7 +251,7 @@ func specs() []spec {
 		pkg("numpy", "pip install numpy", "numpy"),
 		pkg("opencv-python", "pip install opencv-python", "cv2"),
 		pkg("embedding backend (fastembed|sentence-transformers)",
-			"pip install fastembed (or sentence-transformers) — cutvec embeds locally, no API key required",
+			"pip install fastembed (or sentence-transformers) — daVid embeds locally, no API key required",
 			"fastembed", "sentence_transformers"),
 
 		// Model files the transcribe and speakers workers load.

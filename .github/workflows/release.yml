@@ -1,6 +1,6 @@
 # Cut a release from a tag.
 #
-# cutvec is a single Go binary plus a directory of Python workers, so a release
+# daVid is a single Go binary plus a directory of Python workers, so a release
 # is those binaries for the platforms it runs on, and the workers alongside them.
 # The workers are shipped in the archive rather than left to `git clone`, because
 # a binary whose workers are a different version speaks a different protocol.
