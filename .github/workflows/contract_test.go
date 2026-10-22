@@ -2,6 +2,8 @@ package workflows_test
 
 import (
 	"os"
+	"os/exec"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"testing"
@@ -59,7 +61,7 @@ func TestCIAnalysisCacheNeverSkipsChecks(t *testing.T) {
 	if strings.Contains(analysis, "    needs:") {
 		t.Fatal("cheap-first analysis must not depend on the jobs it admits")
 	}
-	for _, required := range []string{"name: Staticcheck", "STATICCHECK_VERSION: v0.7.0", "id: go", "go-version-file: 'go.mod'", "go test ./.github/workflows", "runner.os", "runner.arch", "steps.go.outputs.go-version", "env.STATICCHECK_VERSION", "if: steps.staticcheck-cache.outputs.cache-hit != 'true'", `go install "honnef.co/go/tools/cmd/staticcheck@${STATICCHECK_VERSION}"`, `staticcheck 2026.1 (0.7.0)`, `"$RUNNER_TEMP/daVid-ci-tools/staticcheck" ./...`} {
+	for _, required := range []string{"name: Staticcheck", "STATICCHECK_VERSION: v0.7.0", "id: go", "go-version-file: 'go.mod'", "go test ./.github/workflows", "runner.os", "runner.arch", "steps.go.outputs.go-version", "env.STATICCHECK_VERSION", "if: steps.staticcheck-cache.outputs.cache-hit != 'true'", `go install "honnef.co/go/tools/cmd/staticcheck@${STATICCHECK_VERSION}"`, `staticcheck 2026.1 (v0.7.0)`, `"$RUNNER_TEMP/daVid-ci-tools/staticcheck" ./...`} {
 		if !strings.Contains(analysis, required) {
 			t.Fatalf("pinned cache/check contract lost %q", required)
 		}
@@ -116,5 +118,58 @@ func TestCIStrictAggregateAndBoundedManualIsolation(t *testing.T) {
 		if !strings.Contains(security, required) {
 			t.Fatalf("full-history security contract weakened: missing %q", required)
 		}
+	}
+}
+
+// Execute the workflow's actual shell assertion, including pipefail. These
+// controlled tool outputs complement the measured pinned-binary receipt; a
+// literal-only schema test would have missed Staticcheck's module-version v.
+func TestCIPinnedStaticcheckVersionCommandRejectsWrongRuntime(t *testing.T) {
+	analysis := job(t, readWorkflow(t, "ci.yml"), "staticcheck")
+	start := strings.Index(analysis, "- name: Verify pinned staticcheck")
+	if start < 0 {
+		t.Fatal("missing runtime version assertion")
+	}
+	block := analysis[start:]
+	if end := strings.Index(block[1:], "\n      - "); end >= 0 {
+		block = block[:end+1]
+	}
+	match := regexp.MustCompile(`(?m)^        run: '(.*)'$`).FindStringSubmatch(block)
+	if len(match) != 2 || !strings.Contains(block, "shell: bash") {
+		t.Fatal("version assertion must be an explicit fail-closed bash step")
+	}
+	for _, test := range []struct {
+		name, output string
+		exit         int
+		wantSuccess  bool
+	}{
+		{"pinned", "staticcheck 2026.1 (v0.7.0)", 0, true},
+		{"missing-module-prefix", "staticcheck 2026.1 (0.7.0)", 0, false},
+		{"different-version", "staticcheck 2025.1.1 (v0.6.1)", 0, false},
+		{"extra-output", "unexpected staticcheck 2026.1 (v0.7.0)", 0, false},
+		{"failed-command", "staticcheck 2026.1 (v0.7.0)", 1, false},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			root := t.TempDir()
+			dir := filepath.Join(root, "daVid-ci-tools")
+			if err := os.Mkdir(dir, 0700); err != nil {
+				t.Fatal(err)
+			}
+			// All fixture strings are finite literals without shell quoting bytes.
+			exit := "0"
+			if test.exit != 0 {
+				exit = "1"
+			}
+			tool := "#!/bin/sh\nprintf '%s\\n' '" + test.output + "'\nexit " + exit + "\n"
+			if err := os.WriteFile(filepath.Join(dir, "staticcheck"), []byte(tool), 0700); err != nil {
+				t.Fatal(err)
+			}
+			cmd := exec.Command("bash", "-e", "-o", "pipefail", "-c", match[1])
+			cmd.Env = append(os.Environ(), "RUNNER_TEMP="+root)
+			output, err := cmd.CombinedOutput()
+			if (err == nil) != test.wantSuccess {
+				t.Fatalf("workflow runtime version assertion %s success=%v, want %v: %s", test.name, err == nil, test.wantSuccess, output)
+			}
+		})
 	}
 }

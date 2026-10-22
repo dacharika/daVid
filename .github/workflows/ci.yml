@@ -128,7 +128,7 @@ jobs:
         run: go install "honnef.co/go/tools/cmd/staticcheck@${STATICCHECK_VERSION}"
       - name: Verify pinned staticcheck
         shell: bash
-        run: '"$RUNNER_TEMP/daVid-ci-tools/staticcheck" -version | grep -Fx "staticcheck 2026.1 (0.7.0)"'
+        run: '"$RUNNER_TEMP/daVid-ci-tools/staticcheck" -version | grep -Fx "staticcheck 2026.1 (v0.7.0)"'
       - run: '"$RUNNER_TEMP/daVid-ci-tools/staticcheck" ./...'
 
   workers:
