@@ -58,35 +58,44 @@ func TestCIKeepsSelectedFullGoSuitesAndEveryWorkerGate(t *testing.T) {
 	}
 }
 
-// Parse and evaluate the workflow's finite event selector so both JSON branches
-// are checked, rather than merely finding two runner names somewhere in YAML.
-func TestCIMacOSRunsOnlyForManualAudits(t *testing.T) {
-	goJob := job(t, readWorkflow(t, "ci.yml"), "go")
-	match := regexp.MustCompile(`(?m)^        os: \$\{\{ fromJSON\(github\.event_name == '([a-z_]+)' && '([^']+)' \|\| '([^']+)'\) \}\}$`).FindStringSubmatch(goJob)
-	if len(match) != 4 {
-		t.Fatal("Go matrix must select explicit JSON runner lists by event")
-	}
-	for _, test := range []struct {
-		event string
-		want  []string
-	}{
-		{"push", []string{"ubuntu-latest"}},
-		{"pull_request", []string{"ubuntu-latest"}},
-		{"workflow_dispatch", []string{"ubuntu-latest", "macos-latest"}},
-	} {
-		t.Run(test.event, func(t *testing.T) {
-			selected := match[3]
-			if test.event == match[1] {
-				selected = match[2]
+// Validation is opt-in; release/tag publishing has its separate workflow.
+func TestValidationWorkflowsRunOnlyWhenRequested(t *testing.T) {
+	for _, name := range []string{"ci.yml", "security.yml"} {
+		t.Run(name, func(t *testing.T) {
+			workflow := readWorkflow(t, name)
+			start := strings.Index(workflow, "\non:\n")
+			if start < 0 {
+				t.Fatal("validation workflow must declare explicit manual events")
 			}
-			var runners []string
-			if err := json.Unmarshal([]byte(selected), &runners); err != nil {
-				t.Fatalf("invalid matrix JSON: %v", err)
+			block := workflow[start+len("\non:\n"):]
+			if end := regexp.MustCompile(`(?m)^[a-z][a-z-]*:`).FindStringIndex(block); end != nil {
+				block = block[:end[0]]
 			}
-			if !reflect.DeepEqual(runners, test.want) {
-				t.Fatalf("%s runners = %v, want %v", test.event, runners, test.want)
+			matches := regexp.MustCompile(`(?m)^  ([a-z_]+):`).FindAllStringSubmatch(block, -1)
+			var events []string
+			for _, match := range matches {
+				events = append(events, match[1])
+			}
+			if !reflect.DeepEqual(events, []string{"workflow_dispatch"}) {
+				t.Fatalf("validation events = %v, want only workflow_dispatch", events)
 			}
 		})
+	}
+}
+
+// Evaluate the matrix's actual manual branch; no validation runs on push/PR.
+func TestCIManualAuditsKeepBothFullGoSuites(t *testing.T) {
+	goJob := job(t, readWorkflow(t, "ci.yml"), "go")
+	match := regexp.MustCompile(`(?m)^        os: \$\{\{ fromJSON\(github\.event_name == '([a-z_]+)' && '([^']+)' \|\| '([^']+)'\) \}\}$`).FindStringSubmatch(goJob)
+	if len(match) != 4 || match[1] != "workflow_dispatch" {
+		t.Fatal("Go matrix must select the full manual runner list")
+	}
+	var runners []string
+	if err := json.Unmarshal([]byte(match[2]), &runners); err != nil {
+		t.Fatalf("invalid manual matrix JSON: %v", err)
+	}
+	if !reflect.DeepEqual(runners, []string{"ubuntu-latest", "macos-latest"}) {
+		t.Fatalf("manual runners = %v, want Ubuntu and macOS", runners)
 	}
 }
 
