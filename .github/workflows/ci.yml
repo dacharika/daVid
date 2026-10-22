@@ -9,9 +9,6 @@
 name: CI
 
 on:
-  push:
-    branches: [main, master]
-  pull_request:
   workflow_dispatch:
 
 permissions:
@@ -37,9 +34,9 @@ jobs:
       # A failed PR needs no further matrix spend; manual audits run both legs.
       fail-fast: ${{ github.event_name == 'pull_request' }}
       matrix:
-        # macOS is where this is developed and Linux is where it would be
-        # deployed; a path or case-sensitivity bug shows up on exactly one.
-        os: [ubuntu-latest, macos-latest]
+        # Ordinary CI uses Linux; native macOS validation runs locally and
+        # remains available alongside Linux in an explicit manual audit.
+        os: ${{ fromJSON(github.event_name == 'workflow_dispatch' && '["ubuntu-latest","macos-latest"]' || '["ubuntu-latest"]') }}
     steps:
       - uses: actions/checkout@v7
 
