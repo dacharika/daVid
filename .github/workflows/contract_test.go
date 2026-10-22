@@ -1,9 +1,11 @@
 package workflows_test
 
 import (
+	"encoding/json"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"regexp"
 	"strings"
 	"testing"
@@ -31,10 +33,10 @@ func job(t *testing.T, workflow, name string) string {
 	return block
 }
 
-func TestCIKeepsBothFullGoSuitesAndEveryWorkerGate(t *testing.T) {
+func TestCIKeepsSelectedFullGoSuitesAndEveryWorkerGate(t *testing.T) {
 	workflow := readWorkflow(t, "ci.yml")
 	goJob := job(t, workflow, "go")
-	for _, required := range []string{"name: Go ${{ matrix.os }}", "os: [ubuntu-latest, macos-latest]", "needs: staticcheck", "gofmt -l .", "go vet ./...", "go build ./...", "go test -race -covermode=atomic -coverprofile=coverage.out ./...", "./scripts/check_branding.sh", "go tool cover -func=coverage.out", "retention-days: 14"} {
+	for _, required := range []string{"name: Go ${{ matrix.os }}", "needs: staticcheck", "gofmt -l .", "go vet ./...", "go build ./...", "go test -race -covermode=atomic -coverprofile=coverage.out ./...", "./scripts/check_branding.sh", "go tool cover -func=coverage.out", "retention-days: 14"} {
 		if !strings.Contains(goJob, required) {
 			t.Fatalf("full per-OS Go gate lost %q", required)
 		}
@@ -53,6 +55,38 @@ func TestCIKeepsBothFullGoSuitesAndEveryWorkerGate(t *testing.T) {
 		if !strings.Contains(contract, required) {
 			t.Fatalf("worker protocol gate lost %q", required)
 		}
+	}
+}
+
+// Parse and evaluate the workflow's finite event selector so both JSON branches
+// are checked, rather than merely finding two runner names somewhere in YAML.
+func TestCIMacOSRunsOnlyForManualAudits(t *testing.T) {
+	goJob := job(t, readWorkflow(t, "ci.yml"), "go")
+	match := regexp.MustCompile(`(?m)^        os: \$\{\{ fromJSON\(github\.event_name == '([a-z_]+)' && '([^']+)' \|\| '([^']+)'\) \}\}$`).FindStringSubmatch(goJob)
+	if len(match) != 4 {
+		t.Fatal("Go matrix must select explicit JSON runner lists by event")
+	}
+	for _, test := range []struct {
+		event string
+		want  []string
+	}{
+		{"push", []string{"ubuntu-latest"}},
+		{"pull_request", []string{"ubuntu-latest"}},
+		{"workflow_dispatch", []string{"ubuntu-latest", "macos-latest"}},
+	} {
+		t.Run(test.event, func(t *testing.T) {
+			selected := match[3]
+			if test.event == match[1] {
+				selected = match[2]
+			}
+			var runners []string
+			if err := json.Unmarshal([]byte(selected), &runners); err != nil {
+				t.Fatalf("invalid matrix JSON: %v", err)
+			}
+			if !reflect.DeepEqual(runners, test.want) {
+				t.Fatalf("%s runners = %v, want %v", test.event, runners, test.want)
+			}
+		})
 	}
 }
 
