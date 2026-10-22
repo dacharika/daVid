@@ -9,10 +9,16 @@ on:
 permissions:
   contents: read
 
+# Manual full-history audits are isolated from ordinary superseding runs.
+concurrency:
+  group: history-security-${{ github.event_name == 'workflow_dispatch' && github.run_id || github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' || github.event_name == 'push' }}
+
 jobs:
   secrets:
     name: Full-history secret scan
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
         with:

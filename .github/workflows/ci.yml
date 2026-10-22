@@ -18,10 +18,9 @@ permissions:
   contents: read
 
 concurrency:
-  # A newer push makes an in-flight run irrelevant; cancelling frees the runner
-  # instead of paying for an answer nobody will read.
-  group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  # Supersede ordinary runs, while explicit manual audits keep their own group.
+  group: ci-${{ github.event_name == 'workflow_dispatch' && github.run_id || github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' || github.event_name == 'push' }}
 
 env:
   # The floor is set just under where the suite stands, so it ratchets rather
@@ -31,9 +30,12 @@ env:
 jobs:
   go:
     name: Go ${{ matrix.os }}
+    needs: staticcheck
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
     strategy:
-      fail-fast: false
+      # A failed PR needs no further matrix spend; manual audits run both legs.
+      fail-fast: ${{ github.event_name == 'pull_request' }}
       matrix:
         # macOS is where this is developed and Linux is where it would be
         # deployed; a path or case-sensitivity bug shows up on exactly one.
@@ -88,19 +90,52 @@ jobs:
   staticcheck:
     name: Staticcheck
     runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      STATICCHECK_VERSION: v0.7.0
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7
+        id: go
         with:
           go-version-file: 'go.mod'
           cache: true
+      # Fail cheap formatting and workflow contracts before installing analysis
+      # tooling or admitting the existing full Linux/macOS verification jobs.
+      - name: Formatting preflight
+        run: |
+          unformatted=$(gofmt -l . | grep -v '^$' || true)
+          if [ -n "$unformatted" ]; then
+            echo "::error::these files are not gofmt'd:"
+            echo "$unformatted"
+            gofmt -d $unformatted
+            exit 1
+          fi
+
+      - name: Workflow regression contract
+        run: go test ./.github/workflows
+      # Staticcheck 2026.1 supports the module's Go 1.26 syntax. Cache the
+      # executable separately: setup-go caches modules/builds, not GOPATH/bin.
+      - uses: actions/cache@v4
+        id: staticcheck-cache
+        with:
+          path: ${{ runner.temp }}/daVid-ci-tools
+          key: staticcheck-${{ runner.os }}-${{ runner.arch }}-go${{ steps.go.outputs.go-version }}-${{ env.STATICCHECK_VERSION }}
       - name: Install staticcheck
-        run: go install honnef.co/go/tools/cmd/staticcheck@latest
-      - run: staticcheck ./...
+        if: steps.staticcheck-cache.outputs.cache-hit != 'true'
+        env:
+          GOBIN: ${{ runner.temp }}/daVid-ci-tools
+        run: go install "honnef.co/go/tools/cmd/staticcheck@${STATICCHECK_VERSION}"
+      - name: Verify pinned staticcheck
+        shell: bash
+        run: '"$RUNNER_TEMP/daVid-ci-tools/staticcheck" -version | grep -Fx "staticcheck 2026.1 (v0.7.0)"'
+      - run: '"$RUNNER_TEMP/daVid-ci-tools/staticcheck" ./...'
 
   workers:
     name: Python workers
+    needs: staticcheck
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7
@@ -141,7 +176,9 @@ jobs:
 
   contract:
     name: Worker protocol contract
+    needs: staticcheck
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7
@@ -166,6 +203,7 @@ jobs:
     needs: [go, staticcheck, workers, contract]
     if: always()
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - name: Report the result of every job
         run: |
