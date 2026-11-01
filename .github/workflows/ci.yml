@@ -113,7 +113,7 @@ jobs:
         run: go test ./.github/workflows
       # Staticcheck 2026.1 supports the module's Go 1.26 syntax. Cache the
       # executable separately: setup-go caches modules/builds, not GOPATH/bin.
-      - uses: actions/cache@v4
+      - uses: actions/cache@v6
         id: staticcheck-cache
         with:
           path: ${{ runner.temp }}/daVid-ci-tools
